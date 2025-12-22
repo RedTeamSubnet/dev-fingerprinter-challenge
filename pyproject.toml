@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name = "device fingerprinter"
+name = "dev-fingerprinter-challenge"
 authors = [{ name = "RedTeam Subnet", email = "noreply@theredteam.io" }]
 description = "Bot detection challenge for Bittensor RedTeam Subnet"
 readme = "README.md"
