@@ -97,10 +97,6 @@ class MainConfig(FrozenBaseConfig):
             logger.error(f"Failed to load '{_devices_path}' file!")
             raise
 
-        for _device in _devices:
-            if not _device.get("pushcut_api_key"):
-                _device["pushcut_api_key"] = val.pushcut_api_key
-
         val = ChallengeConfig(devices=_devices, **val.model_dump(exclude={"devices"}))
         return val
 

@@ -3,8 +3,6 @@ challenge:
   ts_device_tag: "tag:devices"
   ts_static_ip: "100.100.200.100"
   change_ts_ip: false
-  pushcut_shortcut: "rt-dfp"
-  pushcut_timeout: 15
   n_repeat: 3
   random_seed: null
   fp_timeout: 60

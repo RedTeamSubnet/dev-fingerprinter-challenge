@@ -8,7 +8,6 @@ import requests
 from pydantic import validate_call, AnyHttpUrl, SecretStr
 
 from api.core.configs.challenge import DevicePM, DeviceStatusEnum, DeviceStateEnum
-from api.helpers.pushcut import Pushcut
 from api.logger import logger
 from api.config import config
 
@@ -60,27 +59,6 @@ class DFPManager:
         _target_devices = []
         for _device in devices:
             if _device.status == DeviceStatusEnum.ACTIVE:
-
-                _pushcut = Pushcut(api_key=_device.pushcut_api_key)
-                _pushcut_servers = _pushcut.get_servers()
-                if not _pushcut_servers:
-                    logger.warning(
-                        f"Device with {{'id': {_device.id}, 'pushcut_id': '{_device.pushcut_id}'}} has no pushcut live servers, skipping..."
-                    )
-                    continue
-
-                _is_pushcut_server_running = True
-                for _pushcut_server in _pushcut_servers:
-                    if (_pushcut_server.get("id") == _device.pushcut_server_id) and (
-                        not _pushcut_server.get("isConnected", False)
-                    ):
-                        logger.warning(
-                            f"Device with {{'id': {_device.id}, 'pushcut_id': '{_device.pushcut_id}', 'server_id': '{_device.pushcut_server_id}'}} live server is not connected, skipping..."
-                        )
-                        _is_pushcut_server_running = False
-
-                if not _is_pushcut_server_running:
-                    continue
 
                 for _ in range(n_repeat):
                     _target_devices.append(

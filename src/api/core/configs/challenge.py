@@ -38,11 +38,6 @@ class DevicePM(BaseModel):
     ts_node_id: constr(strip_whitespace=True, min_length=2, max_length=64) = Field(...)  # type: ignore
     ts_name: constr(strip_whitespace=True, min_length=2, max_length=64) = Field(...)  # type: ignore
     ts_ip: IPvAnyAddress = Field(...)
-    pushcut_id: constr(strip_whitespace=True, min_length=2, max_length=64) = Field(...)  # type: ignore
-    pushcut_api_key: Optional[SecretStr] = Field(
-        default=None, min_length=8, max_length=128
-    )
-    pushcut_server_id: Optional[constr(strip_whitespace=True, min_length=2, max_length=128)] = Field(default=None)  # type: ignore
     device_model: Optional[constr(strip_whitespace=True, min_length=2, max_length=64)] = Field(default=None)  # type: ignore
     fingerprint: Optional[constr(strip_whitespace=True, min_length=2, max_length=256)] = Field(default=None)  # type: ignore
     state: DeviceStateEnum = Field(default=DeviceStateEnum.NOT_SET)
@@ -93,13 +88,6 @@ class ChallengeConfig(FrozenBaseConfig):
     )
     ts_static_ip: IPvAnyAddress = Field(...)
     change_ts_ip: bool = Field(...)
-    pushcut_api_key: SecretStr = Field(..., min_length=8, max_length=128)
-    pushcut_shortcut: constr(strip_whitespace=True, min_length=2, max_length=128) = Field(  # type: ignore
-        ...
-    )
-    pushcut_timeout: conint(ge=1) | constr(  # type: ignore
-        strip_whitespace=True, min_length=1, max_length=8
-    ) = Field(...)
     n_repeat: conint(ge=1) = Field(...)  # type: ignore
     random_seed: Optional[int] = Field(default=None)
     fp_timeout: conint(ge=1) = Field(...)  # type: ignore

@@ -1,4 +1,4 @@
-# Device Fingerprinter V1 Challenge
+# Device Fingerprinter V2 Challenge
 
 The **Device Fingerprinter V1 Challenge** is designed to test the skills of miners in developing a browser SDK that can accurately detect the driver type used by bots interacting with a webpage. **The new iteration has two more bot frameworks to be detected and more strict evaluation criteria.** Participants must create an SDK that can be installed on a website and automatically identify various bot drivers based on their behavior or technical characteristics.
 

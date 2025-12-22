@@ -7,7 +7,6 @@ from api.core.configs.challenge import DeviceStateEnum
 from api.core.services import utils as utils_services
 from api.config import config
 from api.helpers.tailscale import Tailscale
-from api.helpers.pushcut import Pushcut
 from api.logger import logger
 
 from .schemas import MinerInput, MinerOutput
@@ -17,7 +16,6 @@ from .dfp import DFPManager
 tailscale = Tailscale(
     api_token=config.challenge.ts_api_token, tailnet=config.challenge.ts_tailnet
 )
-pushcut = Pushcut(api_key=config.challenge.pushcut_api_key)
 
 dfp_manager: DFPManager
 
@@ -61,24 +59,9 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
             f"[{request_id}] - Executing input '{_web_url}' URL for device with {{'order_id': {_i}, 'id': {_target_device.id}}} ..."
         )
         _target_device.state = DeviceStateEnum.RUNNING
-        success = pushcut.execute(
-            shortcut=config.challenge.pushcut_shortcut,
-            input_url=_web_url,
-            timeout=config.challenge.pushcut_timeout,
-            server_id=_target_device.pushcut_server_id,
-            api_key=_target_device.pushcut_api_key,
-            raise_on_error=False,  # Don't raise exception, just return False
-        )
 
-        if not success:
-            _target_device.state = DeviceStateEnum.ERROR
-            logger.error(
-                f"[{request_id}] - Could not execute pushcut for device with {{'order_id': {_i}, 'id': {_target_device.id}}} (server unavailable or request failed)"
-            )
-            logger.debug(
-                f"[{request_id}] - Device {{'order_id': {_i}, 'id': {_target_device.id}}} marked as ERROR and will be excluded from scoring. No request sent to external proxy."
-            )
-            continue
+        # Pushcut execution removed.
+        # Ensure external mechanism triggers the device or manual intervention is performed.
 
         logger.info(
             f"[{request_id}] - Successfully executed input '{_web_url}' URL for device with {{'order_id': {_i}, 'id': {_target_device.id}}}."
