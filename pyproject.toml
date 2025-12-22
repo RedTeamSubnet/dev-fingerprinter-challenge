@@ -1,0 +1,47 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+
+[project]
+name = "device fingerprinter"
+authors = [{ name = "RedTeam Subnet", email = "noreply@theredteam.io" }]
+description = "Bot detection challenge for Bittensor RedTeam Subnet"
+readme = "README.md"
+requires-python = ">=3.10,<4.0"
+keywords = ["bittensor", "redteam", "challenge", "bot-detection", "fastapi"]
+license = { text = "MIT" }
+classifiers = [
+	"Development Status :: 3 - Alpha",
+	"Intended Audience :: Developers",
+	"Topic :: Software Development :: Libraries",
+	"Operating System :: OS Independent",
+	"Framework :: FastAPI",
+	"Programming Language :: Python :: 3",
+	"Programming Language :: Python :: 3.10",
+	"Programming Language :: Python :: 3.11",
+	"Programming Language :: Python :: 3.12",
+	"Programming Language :: Python :: 3.13",
+	"Private :: Do Not Upload",
+]
+dynamic = ["version", "dependencies", "optional-dependencies"]
+
+
+[project.urls]
+Homepage = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge"
+Repository = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge"
+Documentation = "https://docs.theredteam.io"
+Issues = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge/issues"
+
+
+
+[tool.setuptools]
+include-package-data = true
+packages = ["dev-fingerprinter-challenge"]
+
+[tool.setuptools.package-dir]
+dev-fingerprinter-challenge = "."
+
+[tool.setuptools.dynamic]
+version = { attr = "dev-fingerprinter-challenge.__version__" }
+dependencies = { file = ["requirements.txt"] }
