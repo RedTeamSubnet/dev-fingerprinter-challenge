@@ -8,138 +8,26 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 _PROJECT_DIR="$(cd "${_SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
 cd "${_PROJECT_DIR}" || exit 2
 
-# Loading base script:
-# shellcheck disable=SC1091
-source ./scripts/base.sh
 
-exitIfNoDocker
+if [ -z "$(which python)" ]; then
+	echo "[ERROR]: 'python' not found or not installed!"
+	exit 1
+fi
 
-# Loading .env file (if exists):
-if [ -f ".env" ]; then
-	# shellcheck disable=SC1091
-	source .env
+if ! python -c "import build" &> /dev/null; then
+	echo "[ERROR]: 'build' python package is not installed!"
+	exit 1
 fi
 ## --- Base --- ##
 
 
 ## --- Variables --- ##
-# Load from envrionment variables:
-# BASE_IMAGE
-IMG_REGISTRY=${IMG_REGISTRY:-redteamsubnet61}
-IMG_REPO=${PROJECT_SLUG:-dev_fingerprinter_v1}
-IMG_VERSION=${IMG_VERSION:-$(./scripts/get-version.sh)}
-IMG_SUBTAG=${IMG_SUBTAG:-}
-IMG_PLATFORM=${IMG_PLATFORM:-$(uname -m)}
-DOCKERFILE_PATH=${DOCKERFILE_PATH:-./Dockerfile}
-CONTEXT_PATH=${CONTEXT_PATH:-.}
-
-IMG_ARGS="${IMG_ARGS:-}"
-
 # Flags:
-_IS_CROSS_COMPILE=false
-_IS_PUSH_IMAGES=false
-_IS_CLEAN_IMAGES=false
-
-# Calculated variables:
-_IMG_NAME=""
-if [ -n "${IMG_REGISTRY}" ]; then
-	_IMG_NAME="${IMG_REGISTRY}/${IMG_REPO}"
-else
-	_IMG_NAME="${IMG_REPO}"
-fi
-_IMG_FULLNAME=${_IMG_NAME}:${IMG_VERSION}${IMG_SUBTAG}
-_IMG_LATEST_FULLNAME=${_IMG_NAME}:latest${IMG_SUBTAG}
+_IS_CLEAN=true
+_IS_TEST=false
+_IS_UPLOAD=false
+_IS_STAGING=true
 ## --- Variables --- ##
-
-
-## --- Functions --- ##
-_legacyBuildImages()
-{
-	echoInfo "Building image (${IMG_PLATFORM}): ${_IMG_FULLNAME}"
-	# shellcheck disable=SC2086
-	DOCKER_BUILDKIT=0 docker build \
-		${IMG_ARGS} \
-		-t "${_IMG_FULLNAME}" \
-		-t "${_IMG_LATEST_FULLNAME}" \
-		-t "${_IMG_FULLNAME}-${IMG_PLATFORM#linux/*}" \
-		-t "${_IMG_LATEST_FULLNAME}-${IMG_PLATFORM#linux/*}" \
-		-f "${DOCKERFILE_PATH}" \
-		"${CONTEXT_PATH}" || exit 2
-	echoOk "Done."
-}
-
-_buildImages()
-{
-	echoInfo "Building image (${IMG_PLATFORM}): ${_IMG_FULLNAME}"
-	# shellcheck disable=SC2086
-	DOCKER_BUILDKIT=1 docker build \
-		${IMG_ARGS} \
-		--progress plain \
-		-t "${_IMG_FULLNAME}" \
-		-t "${_IMG_LATEST_FULLNAME}" \
-		-t "${_IMG_FULLNAME}-${IMG_PLATFORM#linux/*}" \
-		-t "${_IMG_LATEST_FULLNAME}-${IMG_PLATFORM#linux/*}" \
-		-f "${DOCKERFILE_PATH}" \
-		"${CONTEXT_PATH}" || exit 2
-	echoOk "Done."
-}
-
-_crossBuildPush()
-{
-	if ! docker buildx ls | grep new_builder > /dev/null 2>&1; then
-		echoInfo "Creating new builder..."
-		docker buildx create --driver docker-container --bootstrap --use --name new_builder || exit 2
-		echoOk "Done."
-	fi
-
-	echoInfo "Cross building images (linux/amd64, linux/arm64): ${_IMG_FULLNAME}"
-	# shellcheck disable=SC2086
-	docker buildx build \
-		${IMG_ARGS} \
-		--progress plain \
-		--platform linux/amd64,linux/arm64 \
-		--cache-from=type="registry,ref=${_IMG_NAME}:cache-latest" \
-		--cache-to=type="registry,ref=${_IMG_NAME}:cache-latest,mode=max" \
-		-t "${_IMG_FULLNAME}" \
-		-t "${_IMG_LATEST_FULLNAME}" \
-		-f "${DOCKERFILE_PATH}" \
-		--push \
-		"${CONTEXT_PATH}" || exit 2
-	echoOk "Done."
-
-	echoInfo "Removing new builder..."
-	docker buildx rm new_builder || exit 2
-	echoOk "Done."
-}
-
-_removeCaches()
-{
-	echoInfo "Removing leftover cache images..."
-	# shellcheck disable=SC2046
-	docker rmi -f $(docker images --filter "dangling=true" -q --no-trunc) 2> /dev/null || true
-	echoOk "Done."
-}
-
-_pushImages()
-{
-	echoInfo "Pushing images..."
-	docker push "${_IMG_FULLNAME}" || exit 2
-	docker push "${_IMG_LATEST_FULLNAME}" || exit 2
-	docker push "${_IMG_FULLNAME}-${IMG_PLATFORM#linux/*}" || exit 2
-	docker push "${_IMG_LATEST_FULLNAME}-${IMG_PLATFORM#linux/*}" || exit 2
-	echoOk "Done."
-}
-
-_cleanImages()
-{
-	echoInfo "Cleaning images..."
-	docker rmi -f "${_IMG_FULLNAME}" || exit 2
-	# docker rmi -f "${_IMG_LATEST_FULLNAME}" || exit 2
-	docker rmi -f "${_IMG_FULLNAME}-${IMG_PLATFORM#linux/*}" || exit 2
-	docker rmi -f "${_IMG_LATEST_FULLNAME}-${IMG_PLATFORM#linux/*}" || exit 2
-	echoOk "Done."
-}
-## --- Functions --- ##
 
 
 ## --- Main --- ##
@@ -147,47 +35,24 @@ main()
 {
 	## --- Menu arguments --- ##
 	if [ -n "${1:-}" ]; then
+		local _input
 		for _input in "${@:-}"; do
 			case ${_input} in
-				-p=* | --platform=*)
-					IMG_PLATFORM="${_input#*=}"
+				-c | --disable-clean)
+					_IS_CLEAN=false
 					shift;;
-				-u | --push-images)
-					_IS_PUSH_IMAGES=true
+				-t | --test)
+					_IS_TEST=true
 					shift;;
-				-c | --clean-images)
-					_IS_CLEAN_IMAGES=true
+				-u | --upload)
+					_IS_UPLOAD=true
 					shift;;
-				-x | --cross-compile)
-					_IS_CROSS_COMPILE=true
-					shift;;
-				-b=* | --base-image=*)
-					BASE_IMAGE="${_input#*=}"
-					shift;;
-				-g=* | --registry=*)
-					IMG_REGISTRY="${_input#*=}"
-					shift;;
-				-r=* | --repo=*)
-					IMG_REPO="${_input#*=}"
-					shift;;
-				-v=* | --version=*)
-					IMG_VERSION="${_input#*=}"
-					shift;;
-				-s=* | --subtag=*)
-					IMG_SUBTAG="${_input#*=}"
-					shift;;
-				-d=* | --dockerfile=*)
-					DOCKERFILE_PATH="${_input#*=}"
-					shift;;
-				-t=* | --context-path=*)
-					CONTEXT_PATH="${_input#*=}"
-					shift;;
-				-l | --legacy-build)
-					_legacyBuildImages
+				-p | --production)
+					_IS_STAGING=false
 					shift;;
 				*)
-					echoError "Failed to parsing input -> ${_input}"
-					echoInfo "USAGE: ${0}  -p=*, --platform=* [amd64 | arm64] | -u, --push-images | -c, --clean-images | -x, --cross-compile | -b=*, --base-image=* | -g=*, --registry=* | -r=*, --repo=* | -v=*, --version=* | -s=*, --subtag=* | -d=*, --dockerfile=* | -t=*, --context-path=* | -l, --legacy-build"
+					echo "[ERROR]: Failed to parsing input -> ${_input}!"
+					echo "[INFO]: USAGE: ${0}  -c, --disable-clean | -t, --test | -u, --upload | -p, --production"
 					exit 1;;
 			esac
 		done
@@ -195,52 +60,42 @@ main()
 	## --- Menu arguments --- ##
 
 
-	# if [ -z "${IMG_REGISTRY:-}" ]; then
-	# 	echoError "Required 'IMG_REGISTRY' environment variable or '--registry=' argument for image registry!"
-	# 	exit 1
-	# fi
-
-	## --- Init arguments --- ##
-	if [ -n "${BASE_IMAGE:-}" ]; then
-		IMG_ARGS="${IMG_ARGS} --build-arg BASE_IMAGE=${BASE_IMAGE}"
-	fi
-
-	if [ -n "${IMG_REGISTRY}" ]; then
-		_IMG_NAME="${IMG_REGISTRY}/${IMG_REPO}"
-	else
-		_IMG_NAME="${IMG_REPO}"
-	fi
-	_IMG_FULLNAME=${_IMG_NAME}:${IMG_VERSION}${IMG_SUBTAG}
-	_IMG_LATEST_FULLNAME=${_IMG_NAME}:latest${IMG_SUBTAG}
-
-	if [ "${IMG_PLATFORM}" = "x86_64" ] || [ "${IMG_PLATFORM}" = "amd64" ] || [ "${IMG_PLATFORM}" = "linux/amd64" ]; then
-		IMG_PLATFORM="linux/amd64"
-	elif [ "${IMG_PLATFORM}" = "aarch64" ] || [ "${IMG_PLATFORM}" = "arm64" ] || [ "${IMG_PLATFORM}" = "linux/arm64" ]; then
-		IMG_PLATFORM="linux/arm64"
-	else
-		echoError "Unsupported platform: ${IMG_PLATFORM}"
-		exit 2
-	fi
-	## --- Init arguments --- ##
-
-
-	## --- Tasks --- ##
-	if [ ${_IS_CROSS_COMPILE} == false ]; then
-		_buildImages
-	else
-		_crossBuildPush
-	fi
-
-	_removeCaches
-
-	if [ ${_IS_PUSH_IMAGES} == true ] && [ ${_IS_CROSS_COMPILE} == false ]; then
-		_pushImages
-
-		if  [ ${_IS_CLEAN_IMAGES} == true ]; then
-			_cleanImages
+	if [ "${_IS_UPLOAD}" == true ]; then
+		if [ -z "$(which twine)" ]; then
+			echo "[ERROR]: 'twine' not found or not installed!"
+			exit 1
 		fi
 	fi
-	## --- Tasks --- ##
+
+
+	if [ "${_IS_CLEAN}" == true ]; then
+		./scripts/clean.sh || exit 2
+	fi
+
+	if [ "${_IS_TEST}" == true ]; then
+		./scripts/test.sh || exit 2
+	fi
+
+
+	echo "[INFO]: Building package..."
+	# python setup.py sdist bdist_wheel || exit 2
+	python -m build || exit 2
+	echo "[OK]: Done."
+
+	if [ "${_IS_UPLOAD}" == true ]; then
+		echo "[INFO]: Publishing package..."
+		python -m twine check dist/* || exit 2
+		if [ "${_IS_STAGING}" == true ]; then
+			python -m twine upload --repository testpypi dist/* || exit 2
+		else
+			python -m twine upload dist/* || exit 2
+		fi
+		echo "[OK]: Done."
+
+		if [ "${_IS_CLEAN}" == true ]; then
+			./scripts/clean.sh || exit 2
+		fi
+	fi
 }
 
 main "${@:-}"
