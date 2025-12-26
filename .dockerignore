@@ -498,6 +498,7 @@ node_modules
 .gitkeep
 .gitmodules
 .benchmarks
+devices.json
 
 **/*.git
 **/*.gitignore

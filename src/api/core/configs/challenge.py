@@ -11,6 +11,7 @@ from pydantic import (
     SecretStr,
     IPvAnyAddress,
     AnyHttpUrl,
+    EmailStr,
 )
 from pydantic_settings import SettingsConfigDict
 
@@ -39,6 +40,8 @@ class DevicePM(BaseModel):
     ts_name: constr(strip_whitespace=True, min_length=2, max_length=64) = Field(...)  # type: ignore
     ts_ip: IPvAnyAddress = Field(...)
     device_model: Optional[constr(strip_whitespace=True, min_length=2, max_length=64)] = Field(default=None)  # type: ignore
+    email: EmailStr = Field(...)
+    browser: constr(strip_whitespace=True, min_length=2, max_length=64) = Field(...)  # type: ignore
     fingerprint: Optional[constr(strip_whitespace=True, min_length=2, max_length=256)] = Field(default=None)  # type: ignore
     state: DeviceStateEnum = Field(default=DeviceStateEnum.NOT_SET)
     status: DeviceStatusEnum = Field(default=DeviceStatusEnum.ACTIVE)
@@ -88,6 +91,11 @@ class ChallengeConfig(FrozenBaseConfig):
     )
     ts_static_ip: IPvAnyAddress = Field(...)
     change_ts_ip: bool = Field(...)
+    smtp_host: constr(strip_whitespace=True, min_length=2, max_length=256) = Field(...)  # type: ignore
+    smtp_port: conint(ge=1, le=65535) = Field(...)  # type: ignore
+    smtp_user: constr(strip_whitespace=True, min_length=2, max_length=256) = Field(...)  # type: ignore
+    smtp_password: SecretStr = Field(..., min_length=8, max_length=128)
+    email_sender: EmailStr = Field(...)
     n_repeat: conint(ge=1) = Field(...)  # type: ignore
     random_seed: Optional[int] = Field(default=None)
     fp_timeout: conint(ge=1) = Field(...)  # type: ignore

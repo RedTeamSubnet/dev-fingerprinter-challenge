@@ -521,6 +521,7 @@ compose.override.yaml
 sample.py
 example.py
 test.py
+devices.json
 
 volumes/.vscode-server/
 volumes/storage/

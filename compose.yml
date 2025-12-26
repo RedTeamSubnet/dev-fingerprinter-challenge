@@ -14,7 +14,7 @@ services:
     volumes:
       - "api-logs:${DFP_API_LOGS_DIR:-/var/log/rest.dfp-challenger}"
       - "api-data:${DFP_API_DATA_DIR:-/var/lib/rest.dfp-challenger}"
-      - "api-configs:${DFP_API_CONFIGS_DIR:-/etc/rest.dfp-challenger}"
+      - "./templates/configs:${DFP_API_CONFIGS_DIR:-/etc/rest.dfp-challenger}"
     ports:
       - "${DFP_API_PORT:-10001}:${DFP_API_PORT:-10001}"
     tty: true

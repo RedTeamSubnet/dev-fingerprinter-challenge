@@ -3,7 +3,12 @@ challenge:
   ts_device_tag: "tag:devices"
   ts_static_ip: "100.100.200.100"
   change_ts_ip: false
-  n_repeat: 3
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  smtp_user: "bekblolot.hbai@gmail.com"
+  smtp_password: "password"
+  email_sender: "noreply@example.com"
+  n_repeat: 1
   random_seed: null
   fp_timeout: 60
   proxy_inter_base_url: "http://localhost:8000"

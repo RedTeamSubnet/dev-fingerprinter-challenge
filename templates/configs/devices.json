@@ -1,22 +1,74 @@
 [
-	{
-		"id": 1,
-		"ts_node_id": "wB1hd3YgktwgwMBU",
-		"ts_name": "my-iphone.tail123.ts.net",
-		"ts_ip": "100.64.0.1",
-		"device_model": "my-iphone-model",
-		"fingerprint": null,
-		"state": "NOT_SET",
-		"status": "INACTIVE"
-	},
-	{
-		"id": 2,
-		"ts_node_id": "ts-node-id-here",
-		"ts_name": "ts-name-here",
-		"ts_ip": "ts-ip-here",
-		"device_model": "device-model-here",
-		"fingerprint": null,
-		"state": "NOT_SET",
-		"status": "ACTIVE"
-	}
+        {
+                "id": 1,
+                "ts_node_id": "XR-1-NODE-ID",
+                "ts_name": "iphone-xr-1.tail123.ts.net",
+                "ts_ip": "100.64.0.1",
+                "device_model": "iphone-xr.1",
+                "email": "user1@example.com",
+                "browser": "safari",
+                "fingerprint": null,
+                "state": "NOT_SET",
+                "status": "ACTIVE"
+        },
+        {
+                "id": 2,
+                "ts_node_id": "XR-2-NODE-ID",
+                "ts_name": "iphone-xr-2.tail123.ts.net",
+                "ts_ip": "100.64.0.2",
+                "device_model": "iphone-xr.2",
+                "email": "user2@example.com",
+                "browser": "safari",
+                "fingerprint": null,
+                "state": "NOT_SET",
+                "status": "ACTIVE"
+        },
+        {
+                "id": 3,
+                "ts_node_id": "11-1-NODE-ID",
+                "ts_name": "iphone-11-1.tail123.ts.net",
+                "ts_ip": "100.64.0.3",
+                "device_model": "iphone-11.1",
+                "email": "user3@example.com",
+                "browser": "safari",
+                "fingerprint": null,
+                "state": "NOT_SET",
+                "status": "ACTIVE"
+        },
+        {
+                "id": 4,
+                "ts_node_id": "11-2-NODE-ID",
+                "ts_name": "iphone-11-2.tail123.ts.net",
+                "ts_ip": "100.64.0.4",
+                "device_model": "iphone-11.2",
+                "email": "user4@example.com",
+                "browser": "safari",
+                "fingerprint": null,
+                "state": "NOT_SET",
+                "status": "ACTIVE"
+        },
+        {
+                "id": 5,
+                "ts_node_id": "SE-1-NODE-ID",
+                "ts_name": "iphone-se-1.tail123.ts.net",
+                "ts_ip": "100.64.0.5",
+                "device_model": "iphone-se.1",
+                "email": "user5@example.com",
+                "browser": "safari",
+                "fingerprint": null,
+                "state": "NOT_SET",
+                "status": "ACTIVE"
+        },
+        {
+                "id": 6,
+                "ts_node_id": "SE-2-NODE-ID",
+                "ts_name": "iphone-se-2.tail123.ts.net",
+                "ts_ip": "100.64.0.6",
+                "device_model": "iphone-se.2",
+                "email": "user6@example.com",
+                "browser": "safari",
+                "fingerprint": null,
+                "state": "NOT_SET",
+                "status": "ACTIVE"
+        }
 ]

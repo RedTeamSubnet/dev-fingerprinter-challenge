@@ -58,6 +58,7 @@ RUN _BUILD_TARGET_ARCH=$(uname -m) && \
 
 COPY requirements ./requirements
 COPY requirements.txt ./requirements.txt
+COPY --chown=${UID}:${GID} ./src ${DFP_API_DIR}
 RUN /opt/conda/bin/pip install --timeout 60 -r ./requirements.txt
 
 
