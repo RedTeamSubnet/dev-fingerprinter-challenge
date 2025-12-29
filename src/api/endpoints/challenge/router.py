@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
-from fastapi import APIRouter, Request, HTTPException, Body, Depends
-from fastapi.responses import JSONResponse
+from fastapi import APIRouter, Request, HTTPException, Body, Depends, Query, Response
+from fastapi.responses import JSONResponse, RedirectResponse
 
 from api.core.constants import ErrorCodeEnum, ALPHANUM_HYPHEN_REGEX
 from api.core.schemas import BaseResPM
@@ -15,6 +15,35 @@ from . import service
 
 
 router = APIRouter(tags=["Challenge"])
+
+
+@router.get(
+    "/redirect",
+    summary="Redirect device to dynamic challenge URL",
+    description="This endpoint redirects a device to its dynamic session URL on the proxy.",
+    response_class=Response,
+)
+def get_redirect(request: Request, device_id: int = Query(..., ge=0)):
+    _request_id = request.state.request_id
+    logger.info(f"[{_request_id}] - Redirecting device ID {device_id}...")
+
+    try:
+        _url = service.get_redirect_url(device_id=device_id)
+        logger.success(f"[{_request_id}] - Redirecting device {device_id} to {_url}")
+        
+        # Return a 307 Redirect with "no-referrer" policy
+        # This prevents the destination page (Miner JS) from seeing "device_id=X" in document.referrer
+        return Response(
+            status_code=307,
+            headers={
+                "Location": _url,
+                "Referrer-Policy": "no-referrer"
+            }
+        )
+    except Exception as e:
+        logger.warning(f"[{_request_id}] - Failed to redirect device {device_id}: {e}")
+        # Fallback or error page could go here, but raising 404 is standard if session not active
+        raise HTTPException(status_code=404, detail="Session not active or device not found")
 
 
 @router.get(

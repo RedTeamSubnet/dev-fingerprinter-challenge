@@ -17,6 +17,7 @@ class DFPManager:
     @validate_call
     def __init__(self, fp_js: str):
         self.fp_js = fp_js
+        self.start_id = 0
 
     @validate_call
     def send_fp_js(
@@ -25,7 +26,8 @@ class DFPManager:
 
         _endpoint = "/_fp-js"
         _base_url = str(base_url).rstrip("/")
-        _url = f"{_base_url}{_endpoint}"
+        # Append dummy order_id to satisfy proxy schema
+        _url = f"{_base_url}{_endpoint}?order_id=0"
 
         logger.info(
             f"[{request_id}] - Sending fingerprinter.js file to '{_url}' DFP proxy server ..."

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+import os
 import time
 import random
 from collections import defaultdict
@@ -30,10 +31,71 @@ email_helper = EmailHelper(
 
 dfp_manager: DFPManager
 
+# Path to persist the global order offset
+OFFSET_FILE = os.path.join("/var/lib/rest.dfp-challenger", "order_offset.txt")
+
+def _get_global_offset() -> int:
+    try:
+        if os.path.exists(OFFSET_FILE):
+            with open(OFFSET_FILE, "r") as f:
+                return int(f.read().strip())
+    except Exception as e:
+        logger.error(f"Failed to read offset file: {e}")
+    return 0
+
+def _set_global_offset(val: int):
+    try:
+        os.makedirs(os.path.dirname(OFFSET_FILE), exist_ok=True)
+        with open(OFFSET_FILE, "w") as f:
+            f.write(str(val))
+    except Exception as e:
+        logger.error(f"Failed to write offset file: {e}")
+
 
 def get_task() -> MinerInput:
     """Return a new challenge task."""
     return MinerInput()
+
+
+@validate_call
+def get_redirect_url(device_id: int) -> str:
+    """
+    Get the redirect URL for a device based on its static ID.
+    This allows devices to use a static shortcut URL while participating in dynamic sessions.
+    """
+    global dfp_manager
+
+    # Check if a session is currently active
+    try:
+        if not dfp_manager or not dfp_manager.target_devices:
+            raise RuntimeError("No active challenge session found.")
+    except NameError:
+        raise RuntimeError("No active challenge session found.")
+
+    # Find the target device in the current session list that matches the static ID
+    _target_device = None
+    _target_index = -1
+    
+    for i, d in enumerate(dfp_manager.target_devices):
+        if d.id == device_id:
+            _target_device = d
+            _target_index = i
+            break
+    
+    if not _target_device:
+        raise ValueError(f"Device ID {device_id} is not part of the current active session.")
+
+    # Calculate the dynamic order ID for this session
+    # start_id is the Global Offset for this run
+    _dynamic_order_id = dfp_manager.start_id + _target_index
+
+    # Construct the proxy URL
+    _web_endpoint = "/_web"
+    _web_base_url = str(config.challenge.proxy_exter_base_url).rstrip("/")
+    _redirect_url = f"{_web_base_url}{_web_endpoint}?order_id={_dynamic_order_id}"
+
+    logger.info(f"Generated redirect for Device {device_id} -> Order {_dynamic_order_id}")
+    return _redirect_url
 
 
 @validate_call
@@ -42,14 +104,31 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
     global dfp_manager
     _score = 0.0
 
+    # Load current offset
+    start_id = _get_global_offset()
+
     # Removed ESLint check here
     dfp_manager = DFPManager(fp_js=miner_output.fingerprinter_js)
-    dfp_manager.send_fp_js(
-        request_id=request_id,
-        base_url=config.challenge.proxy_inter_base_url,
-        api_key=config.challenge.api_key,
-    )
-    utils_services.check_health(request_id=request_id)
+    
+    # Store starting ID in manager for session mapping
+    dfp_manager.start_id = start_id
+    # Initialize dynamic session map
+    dfp_manager.session_map = {}
+    
+    try:
+        dfp_manager.send_fp_js(
+            request_id=request_id,
+            base_url=config.challenge.proxy_inter_base_url,
+            api_key=config.challenge.api_key,
+        )
+    except Exception as e:
+        logger.warning(f"[{request_id}] - Failed to send fingerprinter.js to proxy (ignoring): {e}")
+
+    try:
+        utils_services.check_health(request_id=request_id)
+    except Exception as e:
+        logger.warning(f"[{request_id}] - Failed to check proxy health (ignoring): {e}")
+
     dfp_manager.generate_targets(
         devices=config.challenge.devices,
         n_repeat=1,
@@ -64,7 +143,6 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
     BROWSERS = ["chrome", "brave", "firefox"]
     
     # Consistency map: device_id -> assigned_browser
-    # This ensures that each physical device (by ID) gets exactly one browser choice.
     device_browser_map = {}
 
     for _i, _target_device in enumerate(dfp_manager.target_devices):
@@ -77,13 +155,19 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
 
         _web_endpoint = "/_web"
         _web_base_url = str(config.challenge.proxy_exter_base_url).rstrip("/")
-        _web_url = f"{_web_base_url}{_web_endpoint}?order_id={_i}"
         
+        # Calculate dynamic sequential ID
+        _dynamic_id = start_id + _i
+        _web_url = f"{_web_base_url}{_web_endpoint}?order_id={_dynamic_id}"
+        
+        # Save mapping: Dynamic ID -> Index in target list
+        dfp_manager.session_map[_dynamic_id] = _i
+
         # Prepare item for batching
         targets_by_email[_target_device.email].append({
             "device": _target_device,
             "url": _web_url,
-            "index": _i
+            "index": _dynamic_id
         })
         all_active_devices.append(_target_device)
 
@@ -92,8 +176,9 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
         # Shuffle items to ensure random order in email
         random.shuffle(items)
         
-        # Format: device_model-with-hyphens browser
-        subjects = [f"{item['device'].device_model.replace(' ', '-')} {item['device'].browser}" for item in items]
+        # Format: device_model-with-hyphens browser UNIQUE_ID
+        # Example: "iphone-se.1 chrome 122"
+        subjects = [f"{item['device'].device_model.replace(' ', '-')} {item['device'].browser} {item['index']}" for item in items]
         combined_subject = ", ".join(subjects)
         
         # Body is now just a single space to avoid spam filters but keep content hidden
@@ -111,14 +196,17 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
             for item in items:
                 item['device'].state = DeviceStateEnum.RUNNING
                 logger.info(
-                    f"[{request_id}] - Triggered device {{'order_id': {item['index']}, 'id': {item['device'].id}}} via email batch."
+                    f"[{request_id}] - Triggered device {{'id': {item['device'].id}}} (Order: {item['index']}) via email batch."
                 )
         else:
             for item in items:
                 item['device'].state = DeviceStateEnum.ERROR
                 logger.error(
-                     f"[{request_id}] - Could not send email batch for device {{'order_id': {item['index']}, 'id': {item['device'].id}}}."
+                     f"[{request_id}] - Could not send email batch for device {{'id': {item['device'].id}}}."
                 )
+
+    # Increment global offset by number of devices used and save to file
+    _set_global_offset(start_id + len(dfp_manager.target_devices))
 
     # 3. Wait for all devices to complete or timeout
     _t = 0
@@ -154,14 +242,17 @@ def set_fingerprint(order_id: int, fingerprint: str) -> None:
             "'dfp_manager' is not initialized, please run '/score' endpoint first!"
         )
 
-    if len(dfp_manager.target_devices) <= order_id:
-        raise IndexError(f"Order ID {order_id} is out of range!")
+    # Map the dynamic ID back to the local index using the session map
+    if order_id not in dfp_manager.session_map:
+        logger.warning(f"Received fingerprint for old or invalid Order ID {order_id}. Ignoring.")
+        return
 
-    _target_device = dfp_manager.target_devices[order_id]
+    _local_index = dfp_manager.session_map[order_id]
+    _target_device = dfp_manager.target_devices[_local_index]
+
     if _target_device.state == DeviceStateEnum.COMPLETED:
-        raise ValueError(
-            f"Device with {{'id': {_target_device.id}, 'order_id': {order_id}}} already completed fingerprinting!"
-        )
+        _target_device.fingerprint = fingerprint.strip()
+        return
 
     _target_device.fingerprint = fingerprint.strip()
     _target_device.state = DeviceStateEnum.COMPLETED
