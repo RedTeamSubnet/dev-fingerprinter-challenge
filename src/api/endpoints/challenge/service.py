@@ -3,6 +3,7 @@
 import os
 import time
 import random
+from typing import Optional, List
 from collections import defaultdict
 
 from pydantic import validate_call
@@ -15,6 +16,7 @@ from api.logger import logger
 
 from .schemas import MinerInput, MinerOutput
 from .dfp import DFPManager
+from .payload import PayloadManager, Payload
 
 
 tailscale = Tailscale(
@@ -30,6 +32,7 @@ email_helper = EmailHelper(
 )
 
 dfp_manager: DFPManager
+payload_manager = PayloadManager()
 
 # Path to persist the global order offset
 OFFSET_FILE = os.path.join("/var/lib/rest.dfp-challenger", "order_offset.txt")
@@ -101,7 +104,7 @@ def get_redirect_url(device_id: int) -> str:
 @validate_call
 def score(request_id: str, miner_output: MinerOutput) -> float:
 
-    global dfp_manager
+    global dfp_manager, payload_manager
     _score = 0.0
 
     # Load current offset
@@ -109,6 +112,7 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
 
     # Removed ESLint check here
     dfp_manager = DFPManager(fp_js=miner_output.fingerprinter_js)
+    payload_manager.clear()
     
     # Store starting ID in manager for session mapping
     dfp_manager.start_id = start_id
@@ -140,8 +144,8 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
     all_active_devices = []
     
     # Available browsers to randomize
-    BROWSERS = ["chrome", "brave", "firefox"]
-    
+    BROWSERS = ["chrome", "brave", "firefox-focus", "duckduckgo", "safari"]
+
     # Consistency map: device_id -> assigned_browser
     device_browser_map = {}
 
@@ -162,6 +166,13 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
         
         # Save mapping: Dynamic ID -> Index in target list
         dfp_manager.session_map[_dynamic_id] = _i
+
+        # Create Payload in PayloadManager
+        payload_manager.create_payload(
+            order_id=_dynamic_id,
+            device_id=dev_id,
+            device_name=_target_device.device_model or "Unknown"
+        )
 
         # Prepare item for batching
         targets_by_email[_target_device.email].append({
@@ -228,19 +239,28 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
         _t += 1
         time.sleep(1)
 
-    _score = dfp_manager.score()
+    _score = dfp_manager.score(payloads=payload_manager.get_all_payloads())
     return _score
 
 
-@validate_call
-def set_fingerprint(order_id: int, fingerprint: str) -> None:
+def get_results() -> List[Payload]:
+    """Returns the results (payloads) of the last run."""
+    global payload_manager
+    return payload_manager.get_all_payloads()
 
-    global dfp_manager
+
+@validate_call
+def set_fingerprint(order_id: int, fingerprint: str, device_name: Optional[str] = None) -> None:
+
+    global dfp_manager, payload_manager
 
     if not dfp_manager:
         raise RuntimeError(
             "'dfp_manager' is not initialized, please run '/score' endpoint first!"
         )
+
+    # Update payload in PayloadManager
+    payload_manager.update_fingerprint(order_id, fingerprint.strip(), device_name)
 
     # Map the dynamic ID back to the local index using the session map
     if order_id not in dfp_manager.session_map:
@@ -251,10 +271,9 @@ def set_fingerprint(order_id: int, fingerprint: str) -> None:
     _target_device = dfp_manager.target_devices[_local_index]
 
     if _target_device.state == DeviceStateEnum.COMPLETED:
-        _target_device.fingerprint = fingerprint.strip()
         return
 
-    _target_device.fingerprint = fingerprint.strip()
+    # We only update state to signal completion to the wait loop
     _target_device.state = DeviceStateEnum.COMPLETED
 
     return

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from typing import Optional, List
 from fastapi import APIRouter, Request, HTTPException, Body, Depends, Query, Response
 from fastapi.responses import JSONResponse, RedirectResponse
 
@@ -11,6 +12,7 @@ from api.core.dependencies.auth import auth_api_key
 from api.logger import logger
 
 from .schemas import MinerInput, MinerOutput
+from .payload import Payload
 from . import service
 
 
@@ -107,6 +109,29 @@ def post_score(request: Request, miner_input: MinerInput, miner_output: MinerOut
     return _score
 
 
+@router.get(
+    "/results",
+    summary="Get results",
+    description="This endpoint returns the results (payloads) of the last run.",
+    response_model=List[Payload],
+    dependencies=[Depends(auth_api_key)],
+)
+def get_results(request: Request):
+    _request_id = request.state.request_id
+    logger.info(f"[{_request_id}] - Getting results...")
+    
+    try:
+        results = service.get_results()
+        logger.success(f"[{_request_id}] - Successfully got results.")
+        return results
+    except Exception:
+        logger.exception(f"[{_request_id}] - Failed to get results!")
+        raise BaseHTTPException(
+            error_enum=ErrorCodeEnum.INTERNAL_SERVER_ERROR,
+            message="Failed to get results!",
+        )
+
+
 @router.post(
     "/_fingerprint",
     summary="Set device fingerprint",
@@ -121,16 +146,18 @@ def post_fingerprint(
     fingerprint: str = Body(
         ..., min_length=2, max_length=128, pattern=ALPHANUM_HYPHEN_REGEX
     ),
+    device_name: Optional[str] = Body(None, min_length=1, max_length=128),
 ):
     _request_id = request.state.request_id
     logger.info(
-        f"[{_request_id}] - Setting device fingerprint as {{'order_id': {order_id}, 'fingerprint': '{fingerprint}'}} ..."
+        f"[{_request_id}] - Setting device fingerprint as {{'order_id': {order_id}, 'fingerprint': '{fingerprint}', 'device_name': '{device_name}'}} ..."
     )
 
     try:
         service.set_fingerprint(
             order_id=order_id,
             fingerprint=fingerprint,
+            device_name=device_name,
         )
 
         logger.success(

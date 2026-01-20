@@ -12,6 +12,9 @@ from api.logger import logger
 from api.config import config
 
 
+from .payload import Payload
+
+
 class DFPManager:
 
     @validate_call
@@ -86,9 +89,9 @@ class DFPManager:
         self.target_devices = _target_devices
         return
 
-    def score(self) -> float:
+    def score(self, payloads: List[Payload]) -> float:
         """
-        Calculate the scoring based on device fragmentation and collisions.
+        Calculate the scoring based on device fragmentation and collisions using Payloads.
         Returns a score between 0.0 and 1.0.
         """
         # Extract config values
@@ -96,27 +99,14 @@ class DFPManager:
         weights = sc_config.weights
         thresholds = sc_config.thresholds
 
-        # Filter out devices with ERROR state
-        total_target_devices = len(self.target_devices)
-        error_devices = [
-            r for r in self.target_devices if r.state == DeviceStateEnum.ERROR
-        ]
-        valid_devices = [
-            r for r in self.target_devices if r.state == DeviceStateEnum.COMPLETED
-        ]
+        total_payloads = len(payloads)
+        valid_payloads = [p for p in payloads if p.fingerprint]
 
-        logger.info(f"Scoring: Total target devices: {total_target_devices}")
-        if error_devices:
-            error_device_ids = [
-                {"id": r.id, "device_model": r.device_model} for r in error_devices
-            ]
-            logger.warning(
-                f"Scoring: Found {len(error_devices)} device(s) with ERROR state that will be excluded from scoring: {error_device_ids}"
-            )
-        logger.info(f"Scoring: Valid devices for scoring: {len(valid_devices)}")
+        logger.info(f"Scoring: Total payloads: {total_payloads}")
+        logger.info(f"Scoring: Valid payloads for scoring: {len(valid_payloads)}")
 
-        if not valid_devices:
-            logger.warning("No valid devices to score (all devices have ERROR state).")
+        if not valid_payloads:
+            logger.warning("No valid payloads to score (no fingerprints received).")
             return 0.0
 
         # Aggregate data
@@ -124,11 +114,12 @@ class DFPManager:
         device_models: Dict[int, Optional[str]] = {}
         fingerprint_to_devices: Dict[str, Set[int]] = defaultdict(set)
 
-        for r in valid_devices:
-            device_fingerprints[r.id].append(r.fingerprint)
-            device_models.setdefault(r.id, r.device_model)
-            if r.fingerprint:
-                fingerprint_to_devices[r.fingerprint].add(r.id)
+        for p in valid_payloads:
+            # We use device_id as the unique device identifier (grouping multiple requests from same device)
+            device_fingerprints[p.device_id].append(p.fingerprint)
+            device_models.setdefault(p.device_id, p.device_name)
+            if p.fingerprint:
+                fingerprint_to_devices[p.fingerprint].add(p.device_id)
 
         total_devices = len(device_fingerprints)
         if total_devices == 0:
