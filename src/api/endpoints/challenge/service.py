@@ -61,47 +61,6 @@ def get_task() -> MinerInput:
 
 
 @validate_call
-def get_redirect_url(device_id: int) -> str:
-    """
-    Get the redirect URL for a device based on its static ID.
-    This allows devices to use a static shortcut URL while participating in dynamic sessions.
-    """
-    global dfp_manager
-
-    # Check if a session is currently active
-    try:
-        if not dfp_manager or not dfp_manager.target_devices:
-            raise RuntimeError("No active challenge session found.")
-    except NameError:
-        raise RuntimeError("No active challenge session found.")
-
-    # Find the target device in the current session list that matches the static ID
-    _target_device = None
-    _target_index = -1
-    
-    for i, d in enumerate(dfp_manager.target_devices):
-        if d.id == device_id:
-            _target_device = d
-            _target_index = i
-            break
-    
-    if not _target_device:
-        raise ValueError(f"Device ID {device_id} is not part of the current active session.")
-
-    # Calculate the dynamic order ID for this session
-    # start_id is the Global Offset for this run
-    _dynamic_order_id = dfp_manager.start_id + _target_index
-
-    # Construct the proxy URL
-    _web_endpoint = "/_web"
-    _web_base_url = str(config.challenge.proxy_exter_base_url).rstrip("/")
-    _redirect_url = f"{_web_base_url}{_web_endpoint}?order_id={_dynamic_order_id}"
-
-    logger.info(f"Generated redirect for Device {device_id} -> Order {_dynamic_order_id}")
-    return _redirect_url
-
-
-@validate_call
 def score(request_id: str, miner_output: MinerOutput) -> float:
 
     global dfp_manager, payload_manager
@@ -173,6 +132,19 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
             device_id=dev_id,
             device_name=_target_device.device_model or "Unknown"
         )
+
+        # Set session in proxy
+        try:
+            import requests
+            proxy_url = config.challenge.proxy_inter_base_url.rstrip("/")
+            requests.post(
+                f"{proxy_url}/set_device_session",
+                json={"device_id": dev_id, "order_id": _dynamic_id},
+                headers={"X-API-Key": config.challenge.api_key.get_secret_value()},
+                timeout=5
+            )
+        except Exception as e:
+            logger.warning(f"[{request_id}] - Failed to set session in proxy for device {dev_id}: {e}")
 
         # Prepare item for batching
         targets_by_email[_target_device.email].append({

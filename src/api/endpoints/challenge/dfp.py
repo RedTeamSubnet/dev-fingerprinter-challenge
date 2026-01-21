@@ -91,145 +91,56 @@ class DFPManager:
 
     def score(self, payloads: List[Payload]) -> float:
         """
-        Calculate the scoring based on device fragmentation and collisions using Payloads.
-        Returns a score between 0.0 and 1.0.
+        Calculate the scoring based on strict fingerprint uniqueness (Hard Collisions Only).
+        
+        Logic:
+        1. Numerator: Count of devices that provided a UNIQUE fingerprint (not shared by any other device).
+        2. Denominator: Total number of expected devices (len(self.target_devices)).
+        3. Result: Numerator / Denominator.
+        
+        Note: Devices that collide or fail to respond (timeout) receive 0 points.
         """
-        # Extract config values
-        sc_config = config.challenge.scoring
-        weights = sc_config.weights
-        thresholds = sc_config.thresholds
-
-        total_payloads = len(payloads)
+        total_expected = len(self.target_devices)
         valid_payloads = [p for p in payloads if p.fingerprint]
 
-        logger.info(f"Scoring: Total payloads: {total_payloads}")
-        logger.info(f"Scoring: Valid payloads for scoring: {len(valid_payloads)}")
+        logger.info(f"Scoring: Total expected devices: {total_expected}")
+        logger.info(f"Scoring: Valid fingerprints received: {len(valid_payloads)}")
 
         if not valid_payloads:
             logger.warning("No valid payloads to score (no fingerprints received).")
             return 0.0
 
-        # Aggregate data
-        device_fingerprints: Dict[int, List[Optional[str]]] = defaultdict(list)
-        device_models: Dict[int, Optional[str]] = {}
+        # Map Fingerprint -> Set of Device IDs that produced it
         fingerprint_to_devices: Dict[str, Set[int]] = defaultdict(set)
-
         for p in valid_payloads:
-            # We use device_id as the unique device identifier (grouping multiple requests from same device)
-            device_fingerprints[p.device_id].append(p.fingerprint)
-            device_models.setdefault(p.device_id, p.device_name)
             if p.fingerprint:
                 fingerprint_to_devices[p.fingerprint].add(p.device_id)
 
-        total_devices = len(device_fingerprints)
-        if total_devices == 0:
-            return 0.0  # Edge case: no devices
-
-        # Calculate dynamic limits
-        max_allowed_fragmented = max(
-            1, round(thresholds.fragmentation.frag_pct * total_devices)
-        )
-        soft_collision_limit = max(
-            1, round(thresholds.collision.soft_pct * total_devices)
-        )
-        hard_collision_limit = max(
-            1, round(thresholds.collision.hard_pct * total_devices)
-        )
-
-        # Fragmentation check
-        fragmented_count = 0
-        for device_id, fps in device_fingerprints.items():
-            total_requests = len(fps)
-            if total_requests == 0 or not any(fps):
-                fragmented_count += 1
-                continue
-            min_consistent_count = round(
-                (1 - thresholds.fragmentation.inconsistency_pct) * total_requests
-            )
-            _, freq = Counter([fp for fp in fps if fp]).most_common(1)[0]
-            if freq < min_consistent_count:
-                logger.debug(
-                    f"Device {device_id} is fragmented: {freq}/{total_requests} consistent fingerprints."
-                )
-                fragmented_count += 1
-
-        # Collision check (group-level, one event per fingerprint)
-        soft_collision_count = 0
-        hard_collision_count = 0
+        # Identify which physical devices are in a collision group
+        collision_devices = set()
         for fp, dev_ids in fingerprint_to_devices.items():
-            num_devices_in_group = len(dev_ids)
-            if num_devices_in_group < 2:
-                continue
+            if len(dev_ids) > 1:
+                # Collision detected! All devices in this group are marked.
+                for dev_id in dev_ids:
+                    collision_devices.add(dev_id)
+                    logger.debug(f"Device {dev_id} has collision with fingerprint {fp[:10]}...")
 
-            # This represents N-1 collisions for a group of N devices.
-            collision_magnitude = num_devices_in_group - 1
+        # Calculate total earned points
+        # A device earns 1 point ONLY if it responded AND its fingerprint was unique.
+        total_points = 0.0
+        participating_devices = {p.device_id for p in valid_payloads}
+        
+        for dev_id in participating_devices:
+            if dev_id not in collision_devices:
+                total_points += 1.0
 
-            models = {device_models.get(d) for d in dev_ids}
+        # Final Calculation normalized by ALL expected devices
+        final_score = total_points / total_expected
+        
+        logger.info(f"Scoring Breakdown: {len(participating_devices)} responded, {len(collision_devices)} collisions, {total_points} unique.")
+        logger.info(f"Final Score Calculation: {total_points} / {total_expected} = {final_score:.3f}")
 
-            # Soft only when all models are the same and known
-            if len(models) == 1 and None not in models:
-                model = next(iter(models))
-                logger.debug(
-                    f"Soft collision group: fingerprint {fp} on {num_devices_in_group} devices of model {model}."
-                )
-                soft_collision_count += collision_magnitude
-            else:
-                # Different models and/or unknowns present -> hard collision group
-                models_str = ",".join(
-                    sorted([m if m is not None else "UNKNOWN" for m in models])
-                )
-                logger.debug(
-                    f"Hard collision group: fingerprint {fp} on {num_devices_in_group} devices across models [{models_str}]."
-                )
-                hard_collision_count += collision_magnitude
-
-        # Hard fail guardrail
-        if hard_collision_count > hard_collision_limit * 2:
-            logger.info(
-                f"Hard collision count {hard_collision_count} exceeds threshold limit {hard_collision_limit * 2}, assigning score 0."
-            )
-            return 0.0
-
-        # Scoring function
-        def calculate_score(count: int, limit: int, exponent: float = 1.0) -> float:
-            if count > limit:
-                return 0.0
-            return 1.0 - (count / limit) ** exponent
-
-        fragmentation_score = calculate_score(fragmented_count, max_allowed_fragmented)
-        soft_collision_score = calculate_score(
-            soft_collision_count, soft_collision_limit
-        )
-        hard_collision_score = calculate_score(
-            hard_collision_count, hard_collision_limit, 2.0
-        )
-
-        # Total score
-        total_score = (
-            weights.fragmentation * fragmentation_score
-            + weights.soft_collision * soft_collision_score
-            + weights.hard_collision * hard_collision_score
-        )
-
-        # Optional debug output
-        logger.info(f"Total devices: {total_devices}")
-        logger.info(
-            f"Fragmented devices: {fragmented_count}/{max_allowed_fragmented} -> {fragmentation_score:.3f}"
-        )
-        logger.info(
-            f"Soft collisions: {soft_collision_count}/{soft_collision_limit} -> {soft_collision_score:.3f}"
-        )
-        logger.info(
-            f"Hard collisions: {hard_collision_count}/{hard_collision_limit} -> {hard_collision_score:.3f}"
-        )
-        logger.info(
-            f"Final total score: {total_score:.3f} (before clamping to [0.0, 1.0])"
-        )
-
-        final_score = max(0.0, min(1.0, total_score))
-        logger.info(f"Scoring complete: Final score = {final_score:.3f}")
-
-        return final_score
+        return round(final_score, 3)
 
     ### ATTRIBUTES ###
     ## fp_js ##
