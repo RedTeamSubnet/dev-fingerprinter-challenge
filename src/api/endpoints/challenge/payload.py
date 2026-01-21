@@ -1,14 +1,8 @@
 # -*- coding: utf-8 -*-
 
 from typing import Dict, Optional, List
-from pydantic import BaseModel, Field
+from .schemas import Payload
 
-class Payload(BaseModel):
-    order_id: int = Field(..., description="The dynamic order ID of the device request")
-    device_id: int = Field(..., description="The static ID of the device")
-    device_name: str = Field(..., description="The model name of the device")
-    reported_device_name: Optional[str] = Field(default=None, description="The device name reported by the proxy")
-    fingerprint: Optional[str] = Field(default=None, description="The collected fingerprint")
 
 class PayloadManager:
     """
