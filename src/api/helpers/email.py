@@ -47,7 +47,7 @@ class EmailHelper:
         msg = EmailMessage()
         msg.set_content(body)
         msg["Subject"] = subject
-        msg["From"] = self.email_sender
+        msg["From"] = f"DFP Challenger System <{self.email_sender}>"
         msg["To"] = to
 
         try:

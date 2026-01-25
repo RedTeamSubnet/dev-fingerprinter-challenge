@@ -7,21 +7,15 @@ from typing import Optional, List
 from collections import defaultdict
 
 from pydantic import validate_call
-from api.core.configs.challenge import DeviceStateEnum
+from api.core.configs.challenge import DeviceStateEnum, DevicePM
 from api.core.services import utils as utils_services
 from api.config import config
-from api.helpers.tailscale import Tailscale
 from api.helpers.email import EmailHelper
 from api.logger import logger
 
 from .schemas import MinerInput, MinerOutput
 from .dfp import DFPManager
 from .payload import PayloadManager, Payload
-
-
-tailscale = Tailscale(
-    api_token=config.challenge.ts_api_token, tailnet=config.challenge.ts_tailnet
-)
 
 email_helper = EmailHelper(
     smtp_host=config.challenge.smtp_host,
@@ -73,138 +67,130 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
     dfp_manager = DFPManager(fp_js=miner_output.fingerprinter_js)
     payload_manager.clear()
     
-    # Store starting ID in manager for session mapping
+    # Initialize target list and session map
+    dfp_manager.target_devices = []
     dfp_manager.start_id = start_id
-    # Initialize dynamic session map
     dfp_manager.session_map = {}
     
     try:
         dfp_manager.send_fp_js(
             request_id=request_id,
-            base_url=config.challenge.proxy_inter_base_url,
+            base_url=str(config.challenge.proxy_inter_base_url).rstrip("/"),
             api_key=config.challenge.api_key,
         )
     except Exception as e:
         logger.warning(f"[{request_id}] - Failed to send fingerprinter.js to proxy (ignoring): {e}")
 
-    dfp_manager.generate_targets(
-        devices=config.challenge.devices,
-        n_repeat=1,
-        random_seed=config.challenge.random_seed,
-    )
+    # Use the number of repeats from config
+    _n_repeat = config.challenge.n_repeat
+    _total_devices = len(config.challenge.devices)
 
-    # 1. Group targets by email and prepare URLs
-    targets_by_email = defaultdict(list)
-    all_active_devices = []
-    
-    # Available browsers to randomize
-    BROWSERS = ["chrome", "brave", "firefox-focus", "duckduckgo", "safari"]
+    logger.info(f"[{request_id}] - Starting {_n_repeat} sequential batches of {_total_devices} devices...")
 
-    # Consistency map: device_id -> assigned_browser
-    device_browser_map = {}
+    for _batch_idx in range(_n_repeat):
+        logger.info(f"[{request_id}] - Processing Batch {_batch_idx + 1}/{_n_repeat}")
 
-    for _i, _target_device in enumerate(dfp_manager.target_devices):
-        # Ensure consistent browser per device ID for this run
-        dev_id = _target_device.id
-        if dev_id not in device_browser_map:
-            device_browser_map[dev_id] = random.choice(BROWSERS)
+        # 1. Prepare Batch: Proxy Sync & Payload creation
+        targets_by_email = defaultdict(list)
+        batch_target_devices = []
+        
+        # Available browsers to randomize per batch
+        BROWSERS = ["chrome", "brave", "firefox-focus", "duckduckgo", "safari"]
+        # Create a fresh shuffled copy of browsers for this batch
+        batch_browsers = list(BROWSERS)
+        random.shuffle(batch_browsers)
+
+        # Iterate through ALL devices in config to ensure a full set of 6 in each batch
+        for _i, _device_config in enumerate(config.challenge.devices):
+            # Convert frozen config to mutable DevicePM to fix "Instance is frozen" error
+            _new_target = DevicePM(**_device_config.model_dump())
+            _new_target.state = DeviceStateEnum.READY
             
-        _target_device.browser = device_browser_map[dev_id]
+            # Assign a random browser from our shuffled list (matching 1-to-1)
+            # This ensures each device in the batch gets a unique browser if possible
+            _new_target.browser = batch_browsers[_i % len(batch_browsers)]
 
-        _web_endpoint = "/_web"
-        _web_base_url = str(config.challenge.proxy_exter_base_url).rstrip("/")
-        
-        # Calculate dynamic sequential ID
-        _dynamic_id = start_id + _i
-        _web_url = f"{_web_base_url}{_web_endpoint}?order_id={_dynamic_id}"
-        
-        # Save mapping: Dynamic ID -> Index in target list
-        dfp_manager.session_map[_dynamic_id] = _i
-
-        # Create Payload in PayloadManager
-        payload_manager.create_payload(
-            order_id=_dynamic_id,
-            device_id=dev_id,
-            device_name=_target_device.device_model or "Unknown"
-        )
-
-        # Set session in proxy
-        try:
-            import requests
-            proxy_url = str(config.challenge.proxy_inter_base_url).rstrip("/")
-            requests.post(
-                f"{proxy_url}/set_device_session",
-                json={"device_id": dev_id, "order_id": _dynamic_id},
-                headers={"X-API-Key": config.challenge.api_key.get_secret_value()},
-                timeout=5
+            # Calculate Global Order ID
+            # Batch 0: 0-5, Batch 1: 6-11, etc.
+            _global_index = (_batch_idx * _total_devices) + _i
+            _dynamic_id = start_id + _global_index
+            
+            # Track this target in the manager's global list for final scoring
+            dfp_manager.target_devices.append(_new_target)
+            # Save mapping: Dynamic ID -> Index in the manager's GROWING target list
+            dfp_manager.session_map[_dynamic_id] = len(dfp_manager.target_devices) - 1
+            
+            # Setup Payload Manager entry
+            payload_manager.create_payload(
+                order_id=_dynamic_id,
+                device_id=_device_config.id,
+                device_name=_device_config.device_model or "Unknown"
             )
-        except Exception as e:
-            logger.warning(f"[{request_id}] - Failed to set session in proxy for device {dev_id}: {e}")
 
-        # Prepare item for batching
-        targets_by_email[_target_device.email].append({
-            "device": _target_device,
-            "url": _web_url,
-            "index": _dynamic_id
-        })
-        all_active_devices.append(_target_device)
+            # Sync with Proxy
+            try:
+                import requests
+                proxy_url = str(config.challenge.proxy_inter_base_url).rstrip("/")
+                requests.post(
+                    f"{proxy_url}/set_device_session",
+                    json={"device_id": _device_config.id, "order_id": _dynamic_id},
+                    headers={"X-API-Key": config.challenge.api_key.get_secret_value()},
+                    timeout=10
+                ).raise_for_status()
+            except Exception as e:
+                logger.warning(f"[{request_id}] - Failed to set session in proxy for device {_device_config.id}: {e}")
 
-    # 2. Send batched emails
-    for email, items in targets_by_email.items():
-        # Shuffle items to ensure random order in email
-        random.shuffle(items)
-        
-        # Format: device_model-with-hyphens browser UNIQUE_ID
-        # Example: "iphone-se.1 chrome 122"
-        subjects = [f"{item['device'].device_model.replace(' ', '-')} {item['device'].browser} {item['index']}" for item in items]
-        combined_subject = ", ".join(subjects)
-        
-        # Body is now just a single space to avoid spam filters but keep content hidden
-        combined_body = " "
+            # Prepare Email Data
+            _web_endpoint = "/_web"
+            _web_base_url = str(config.challenge.proxy_exter_base_url).rstrip("/")
+            _web_url = f"{_web_base_url}{_web_endpoint}?order_id={_dynamic_id}"
 
-        logger.info(f"[{request_id}] - Sending batched email with subject: '{combined_subject}'")
-        
-        success = email_helper.send(
-            to=email,
-            subject=combined_subject,
-            body=combined_body
-        )
+            targets_by_email[_device_config.email].append({
+                "device": _new_target,
+                "url": _web_url,
+                "index": _dynamic_id
+            })
+            batch_target_devices.append(_new_target)
 
-        if success:
+        # 2. Send Email for this Batch
+        for email, items in targets_by_email.items():
+            # Randomly shuffle the order of device tasks in the subject line
+            random.shuffle(items)
+            subjects = [f"{item['device'].device_model.replace(' ', '-')} {item['device'].browser} {item['index']}" for item in items]
+            combined_subject = ", ".join(subjects)
+            
+            logger.info(f"[{request_id}] - Sending Batch {_batch_idx + 1} email: '{combined_subject}'")
+            email_helper.send(to=email, subject=combined_subject, body=" ")
+
             for item in items:
                 item['device'].state = DeviceStateEnum.RUNNING
-                logger.info(
-                    f"[{request_id}] - Triggered device {{'id': {item['device'].id}}} (Order: {item['index']}) via email batch."
-                )
-        else:
-            for item in items:
-                item['device'].state = DeviceStateEnum.ERROR
-                logger.error(
-                     f"[{request_id}] - Could not send email batch for device {{'id': {item['device'].id}}}."
-                )
+                logger.info(f"[{request_id}] - Triggered device {{'id': {item['device'].id}}} (Order: {item['index']})")
 
-    # Increment global offset by number of devices used and save to file
-    _set_global_offset(start_id + len(dfp_manager.target_devices))
+        # 3. Wait Loop for THIS Batch
+        _t = 0
+        while True:
+            # Check ONLY devices in the current batch
+            pending_devices = [d for d in batch_target_devices if d.state == DeviceStateEnum.RUNNING]
+            
+            if not pending_devices:
+                logger.info(f"[{request_id}] - Batch {_batch_idx + 1} finished successfully.")
+                break
 
-    # 3. Wait for all devices to complete or timeout
-    _t = 0
-    while True:
-        pending_devices = [d for d in all_active_devices if d.state == DeviceStateEnum.RUNNING]
+            if config.challenge.fp_timeout <= _t:
+                logger.warning(
+                    f"[{request_id}] - Batch {_batch_idx + 1} timed out ({config.challenge.fp_timeout}s). Proceeding to next batch."
+                )
+                for d in pending_devices:
+                    d.state = DeviceStateEnum.TIMEOUT
+                break
+
+            _t += 1
+            time.sleep(1)
         
-        if not pending_devices:
-            logger.info(f"[{request_id}] - All devices finished processing (Completed, Timeout, or Error).")
-            break
+        # End of batch loop
 
-        if config.challenge.fp_timeout <= _t:
-            logger.warning(
-                f"[{request_id}] - Timeout reached ({config.challenge.fp_timeout}s). Marking {len(pending_devices)} pending devices as TIMEOUT."
-            )
-            for d in pending_devices:
-                d.state = DeviceStateEnum.TIMEOUT
-            break
-
-        _t += 1
-        time.sleep(1)
+    # Update global offset after ALL batches are done
+    _set_global_offset(start_id + len(dfp_manager.target_devices))
 
     _score = dfp_manager.score(payloads=payload_manager.get_all_payloads())
     return _score

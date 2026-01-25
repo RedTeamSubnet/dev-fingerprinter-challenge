@@ -181,9 +181,6 @@ class DFPManager:
                 f"`target_devices` attribute type {type(target_devices)} is invalid, must be a <list>!"
             )
 
-        if not target_devices:
-            raise ValueError("`target_devices` attribute value is empty!")
-
         for _task_device in target_devices:
             if not isinstance(_task_device, DevicePM):
                 raise TypeError(
