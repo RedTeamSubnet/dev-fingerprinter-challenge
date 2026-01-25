@@ -100,11 +100,14 @@ class DFPManager:
         
         Note: Devices that collide or fail to respond (timeout) receive 0 points.
         """
-        total_expected = len(self.target_devices)
+        # Total expected is the number of UNIQUE physical devices in this session
+        _unique_ids = {d.id for d in self.target_devices}
+        total_expected = len(_unique_ids)
+        
         valid_payloads = [p for p in payloads if p.fingerprint]
 
-        logger.info(f"Scoring: Total expected devices: {total_expected}")
-        logger.info(f"Scoring: Valid fingerprints received: {len(valid_payloads)}")
+        logger.info(f"Scoring: Total unique physical devices: {total_expected}")
+        logger.info(f"Scoring: Total fingerprints received: {len(valid_payloads)}")
 
         if not valid_payloads:
             logger.warning("No valid payloads to score (no fingerprints received).")
@@ -126,7 +129,7 @@ class DFPManager:
                     logger.debug(f"Device {dev_id} has collision with fingerprint {fp[:10]}...")
 
         # Calculate total earned points
-        # A device earns 1 point ONLY if it responded AND its fingerprint was unique.
+        # A physical device earns 1 point ONLY if it responded AND its fingerprints never collided with others.
         total_points = 0.0
         participating_devices = {p.device_id for p in valid_payloads}
         
@@ -134,10 +137,10 @@ class DFPManager:
             if dev_id not in collision_devices:
                 total_points += 1.0
 
-        # Final Calculation normalized by ALL expected devices
+        # Final Calculation normalized by physical device count
         final_score = total_points / total_expected
         
-        logger.info(f"Scoring Breakdown: {len(participating_devices)} responded, {len(collision_devices)} collisions, {total_points} unique.")
+        logger.info(f"Scoring Breakdown: {len(participating_devices)}/{total_expected} physical devices responded, {len(collision_devices)} collisions, {total_points} unique.")
         logger.info(f"Final Score Calculation: {total_points} / {total_expected} = {final_score:.3f}")
 
         return round(final_score, 3)
