@@ -87,11 +87,6 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
     except Exception as e:
         logger.warning(f"[{request_id}] - Failed to send fingerprinter.js to proxy (ignoring): {e}")
 
-    try:
-        utils_services.check_health(request_id=request_id)
-    except Exception as e:
-        logger.warning(f"[{request_id}] - Failed to check proxy health (ignoring): {e}")
-
     dfp_manager.generate_targets(
         devices=config.challenge.devices,
         n_repeat=1,
@@ -136,7 +131,7 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
         # Set session in proxy
         try:
             import requests
-            proxy_url = config.challenge.proxy_inter_base_url.rstrip("/")
+            proxy_url = str(config.challenge.proxy_inter_base_url).rstrip("/")
             requests.post(
                 f"{proxy_url}/set_device_session",
                 json={"device_id": dev_id, "order_id": _dynamic_id},
