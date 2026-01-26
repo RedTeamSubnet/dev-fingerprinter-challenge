@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 import smtplib
+import time
 from email.message import EmailMessage
 
 from pydantic import validate_call, SecretStr, EmailStr, constr, conint
@@ -31,13 +32,17 @@ class EmailHelper:
         to: EmailStr,
         subject: constr(strip_whitespace=True, min_length=1),  # type: ignore
         body: str,
+        retries: int = 3,
+        delay: int = 2,
     ) -> bool:
-        """Send an email.
+        """Send an email with retry logic.
 
         Args:
             to (EmailStr): Recipient email address.
             subject (str): Email subject.
             body (str): Email body.
+            retries (int): Number of retries on failure. Defaults to 3.
+            delay (int): Delay in seconds between retries. Defaults to 2.
 
         Returns:
             bool: True if sent successfully, False otherwise.
@@ -50,15 +55,21 @@ class EmailHelper:
         msg["From"] = f"DFP Challenger System <{self.email_sender}>"
         msg["To"] = to
 
-        try:
-            with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
-                server.starttls()
-                server.login(self.smtp_user, self.smtp_password.get_secret_value())
-                server.send_message(msg)
+        for attempt in range(1, retries + 1):
+            try:
+                with smtplib.SMTP(self.smtp_host, self.smtp_port) as server:
+                    server.starttls()
+                    server.login(self.smtp_user, self.smtp_password.get_secret_value())
+                    server.send_message(msg)
 
-            logger.info(f"Successfully sent email.")
-            return True
+                logger.info(f"Successfully sent email.")
+                return True
 
-        except Exception as e:
-            logger.error(f"Failed to send email: {e}")
-            return False
+            except Exception as e:
+                logger.warning(f"Attempt {attempt}/{retries} failed to send email: {e}")
+                if attempt < retries:
+                    time.sleep(delay)
+                else:
+                    logger.error(f"Failed to send email after {retries} attempts.")
+                    return False
+        return False
