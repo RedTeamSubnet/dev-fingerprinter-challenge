@@ -1,4 +1,4 @@
-  # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 import time
 import random
@@ -13,10 +13,16 @@ from api.config import config
 from api.helpers.email import EmailHelper
 from api.logger import logger
 
-from .schemas import MinerInput, MinerOutput
-from .dfp import DFPManager
-from .payload import PayloadManager, Payload
-from .job import Job, job_registry, reserve_offset_range
+from .schemas import MinerInput, MinerOutput, Payload
+from .dfp import (
+    DFPManager,
+    reserve_offset_range,
+    start_new_session,
+    get_active_manager,
+    complete_session,
+    get_last_results,
+    update_fingerprint as dfp_update_fingerprint,
+)
 
 
 email_helper = EmailHelper(
@@ -25,7 +31,7 @@ email_helper = EmailHelper(
     smtp_user=config.challenge.smtp_user,
     smtp_password=config.challenge.smtp_password,
     email_sender=config.challenge.email_sender,
-   )
+)
 
 BROWSERS = ["chrome", "brave", "firefox-focus", "duckduckgo", "safari"]
 
@@ -37,35 +43,31 @@ def get_task() -> MinerInput:
 
 @validate_call
 def score(request_id: str, miner_output: MinerOutput) -> float:
-    """Score a miner's fingerprinter.js submission (thread-safe)."""
+    """Score a miner's fingerprinter.js submission."""
 
     _n_repeat = config.challenge.n_repeat
     _total_devices = len(config.challenge.devices)
 
+    # Start new session (clears any previous state)
+    manager = start_new_session(
+        fp_js=miner_output.fingerprinter_js,
+        request_id=request_id
+    )
+
     # Atomically reserve order IDs
     start_id = reserve_offset_range(_n_repeat * _total_devices)
-
-    # Create isolated state for this request
-    manager = DFPManager(fp_js=miner_output.fingerprinter_js)
-    manager.target_devices = []
-    payload_mgr = PayloadManager()
-
-    job = Job(
-        request_id=request_id,
-        manager=manager,
-        payload_mgr=payload_mgr,
-        start_id=start_id,
-    )
+    manager.start_id = start_id
 
     # Send fingerprinter.js to proxy
     try:
         manager.send_fp_js(
             request_id=request_id,
-            base_url=str(config.challenge.proxy_inter_base_url).rstrip("/"),
+            base_url=config.challenge.proxy_inter_base_url,
             api_key=config.challenge.api_key,
         )
     except Exception as e:
         logger.warning(f"[{request_id}] - Failed to send fingerprinter.js to proxy: {e}")
+        raise
 
     logger.info(f"[{request_id}] - Starting {_n_repeat} batches of {_total_devices} devices...")
 
@@ -77,19 +79,13 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
         batch_browsers = random.sample(BROWSERS, len(BROWSERS))
 
         for i, device_cfg in enumerate(config.challenge.devices):
-            target = DevicePM(**device_cfg.model_dump())
-            target.state = DeviceStateEnum.READY
-            target.browser = batch_browsers[i % len(batch_browsers)]
-
             order_id = start_id + (batch_idx * _total_devices) + i
+            browser = batch_browsers[i % len(batch_browsers)]
 
-            manager.target_devices.append(target)
-            job.session_map[order_id] = len(manager.target_devices) - 1
-
-            payload_mgr.create_payload(
+            manager.add_device(
                 order_id=order_id,
-                device_id=device_cfg.id,
-                device_name=device_cfg.device_model or "Unknown",
+                device_cfg=device_cfg,
+                browser=browser
             )
 
             # Sync with proxy
@@ -106,14 +102,11 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
 
             web_url = f"{str(config.challenge.proxy_exter_base_url).rstrip('/')}/_web?order_id={order_id}"
             targets_by_email[device_cfg.email].append({
-                "device": target,
+                "device": manager.target_devices[-1],
                 "url": web_url,
                 "index": order_id,
             })
-            batch_devices.append(target)
-
-        # Register job so fingerprints can be received
-        job_registry.register(job)
+            batch_devices.append(order_id)
 
         # Send emails
         for email, items in targets_by_email.items():
@@ -126,57 +119,50 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
             email_helper.send(to=email, subject=subject, body=" ")
 
             for it in items:
-                it["device"].state = DeviceStateEnum.RUNNING
+                order_id = it["index"]
+                manager.set_device_running(order_id)
 
         # Wait for batch completion
         elapsed = 0
         while True:
-            pending = [d for d in batch_devices if d.state == DeviceStateEnum.RUNNING]
+            pending = manager.get_pending_devices()
             if not pending:
                 logger.info(f"[{request_id}] - Batch {batch_idx + 1} completed.")
                 break
             if elapsed >= config.challenge.fp_timeout:
                 logger.warning(f"[{request_id}] - Batch {batch_idx + 1} timed out.")
-                for d in pending:
-                    d.state = DeviceStateEnum.TIMEOUT
+                for order_id in batch_devices:
+                    manager.set_device_timeout(order_id)
                 break
             elapsed += 1
             time.sleep(1)
 
-    score_result = manager.score(payloads=payload_mgr.get_all_payloads())
+    score_result = manager.calculate_score()
 
-    # Optional: cleanup (comment out if you need /results after scoring)
-    # job_registry.unregister(request_id)
+    # Complete session and save results
+    complete_session()
 
     return score_result
 
 
-def get_results(request_id: str) -> List[Payload]:
-    """Returns the results for a specific request."""
-    job = job_registry.get_by_request(request_id)
-    return job.payload_mgr.get_all_payloads() if job else []
+def get_results() -> List[Payload]:
+    """Returns the results from the last completed session."""
+    return get_last_results()
 
 
 @validate_call
-def set_fingerprint(order_id: int, fingerprint: str, device_name: Optional[str] = None) -> None:
+def set_fingerprint(order_id: int, fingerprint: str, device_name: Optional[str] = None) -> bool:
     """Receive fingerprint from proxy."""
-    job = job_registry.get_by_order(order_id)
-    if not job:
-        logger.warning(f"Unknown order_id {order_id}. Ignoring.")
-        return
-
-    if order_id not in job.session_map:
-        logger.warning(f"Order ID {order_id} not in session_map. Ignoring.")
-        return
-
-    idx = job.session_map[order_id]
-    target = job.manager.target_devices[idx]
-
-    if target.state == DeviceStateEnum.COMPLETED:
-        return
-
-    job.payload_mgr.update_fingerprint(order_id, fingerprint.strip(), device_name)
-    target.state = DeviceStateEnum.COMPLETED
+    success = dfp_update_fingerprint(
+        order_id=order_id,
+        fingerprint=fingerprint,
+        device_name=device_name
+    )
+    
+    if not success:
+        logger.warning(f"Failed to set fingerprint for order_id {order_id}")
+    
+    return success
 
 
 __all__ = [

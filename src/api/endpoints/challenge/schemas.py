@@ -76,4 +76,5 @@ class Payload(BaseModel):
 __all__ = [
     "MinerInput",
     "MinerOutput",
+    "Payload",
 ]

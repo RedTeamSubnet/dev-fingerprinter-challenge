@@ -11,8 +11,7 @@ from api.core.exceptions import BaseHTTPException
 from api.core.dependencies.auth import auth_api_key
 from api.logger import logger
 
-from .schemas import MinerInput, MinerOutput
-from .payload import Payload
+from .schemas import MinerInput, MinerOutput, Payload
 from . import service
 
 router = APIRouter(tags=["Challenge"])
@@ -91,7 +90,7 @@ def get_results(request: Request):
     
     try:
         results = service.get_results()
-        logger.success(f"[{_request_id}] - Successfully got results.")
+        logger.success(f"[{_request_id}] - Successfully got {len(results)} results.")
         return results
     except Exception:
         logger.exception(f"[{_request_id}] - Failed to get results!")
