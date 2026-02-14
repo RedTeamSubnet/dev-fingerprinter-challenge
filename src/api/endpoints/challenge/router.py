@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
 from typing import Optional, List
-from fastapi import APIRouter, Request, HTTPException, Body, Depends, Query, Response
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi import APIRouter, Request, HTTPException, Body, Depends
+from fastapi.responses import JSONResponse
 
 from api.core.constants import ErrorCodeEnum, ALPHANUM_HYPHEN_REGEX
 from api.core.schemas import BaseResPM

@@ -11,7 +11,6 @@ from pydantic import validate_call, AnyHttpUrl, SecretStr
 
 from api.core.configs.challenge import DevicePM, DeviceStateEnum, DeviceStatusEnum
 from api.logger import logger
-from api.config import config
 
 from .schemas import Payload
 
@@ -44,48 +43,21 @@ class DFPManager:
     """Manages device fingerprinting sessions and scoring."""
 
     @validate_call
-    def __init__(self, fp_js: str):
+    def __init__(self, fp_js: str = ""):
         self.fp_js = fp_js
         self.restart_manager()
 
-    def restart_manager(self) -> None:
+    def restart_manager(self, fp_js: str = "") -> None:
         """Reset the manager state for a new session."""
+        if fp_js:
+            self.fp_js = fp_js
         self.target_devices: List[DevicePM] = []
         self.payloads: Dict[int, Payload] = {}
         self.session_map: Dict[int, int] = {}
         self.score_value: float = 0.0
         self.start_id: int = 0
         self.request_id: Optional[str] = None
-
-    def generate_targets(
-        self, devices: list[DevicePM], n_repeat: int, random_seed: Optional[int] = None
-    ) -> None:
-        """Generate target devices with multiple repeats and shuffling."""
-        _target_devices = []
-        for _device in devices:
-            if _device.status == DeviceStatusEnum.ACTIVE:
-                for _ in range(n_repeat):
-                    _target_devices.append(
-                        DevicePM(
-                            **_device.model_dump(exclude={"state"}),
-                            state=DeviceStateEnum.READY,
-                        )
-                    )
-
-        if not _target_devices:
-            raise ValueError(
-                "Not found any active or connected devices to generate targets!"
-            )
-
-        if random_seed is not None:
-            random.seed(random_seed)
-
-        random.shuffle(_target_devices)
-
-        if random_seed is not None:
-            random.seed(None)
-
-        self.target_devices = _target_devices
+        self.session_structure: Dict[int, Dict[str, List[dict]]] = {}
 
     @validate_call
     def add_device(
@@ -146,6 +118,63 @@ class DFPManager:
             idx = self.session_map[order_id]
             if self.target_devices[idx].state == DeviceStateEnum.RUNNING:
                 self.target_devices[idx].state = DeviceStateEnum.TIMEOUT
+
+    def gen_session_structure(
+        self,
+        devices: List[DevicePM],
+        browsers: List[str],
+        n_repeat: int,
+    ) -> Dict[int, Dict[str, List[dict]]]:
+        """Generate session structure with shuffled browsers and devices per batch.
+        
+        Structure: dict[batch_number: dict[browser: list_of_device_info]]
+        Each batch uses one browser for all devices.
+        Devices are shuffled and assigned order_ids in shuffled order.
+        """
+        # Get only active devices
+        active_devices = [d for d in devices if d.status == DeviceStatusEnum.ACTIVE]
+        
+        if not active_devices:
+            raise ValueError("No active devices found to generate session structure!")
+        
+        # Shuffle browsers once for all batches
+        shuffled_browsers = browsers.copy()
+        random.shuffle(shuffled_browsers)
+        
+        structure: Dict[int, Dict[str, List[dict]]] = {}
+        current_order_id = self.start_id
+        
+        for batch_idx in range(n_repeat):
+            # Select browser for this batch (cycle through shuffled browsers if needed)
+            browser = shuffled_browsers[batch_idx % len(shuffled_browsers)]
+            
+            # Shuffle devices for this batch
+            batch_devices = active_devices.copy()
+            random.shuffle(batch_devices)
+            
+            # Create device info list with order_ids
+            device_infos = []
+            for device_cfg in batch_devices:
+                self.add_device(
+                    order_id=current_order_id,
+                    device_cfg=device_cfg,
+                    browser=browser
+                )
+                
+                device_infos.append({
+                    "device_cfg": device_cfg,
+                    "order_id": current_order_id,
+                    "device": self.target_devices[-1],
+                    "email": device_cfg.email,
+                })
+                
+                current_order_id += 1
+            
+            # Store in structure: batch_idx -> browser -> list of device infos
+            structure[batch_idx] = {browser: device_infos}
+        
+        self.session_structure = structure
+        return structure
 
     @validate_call
     def send_fp_js(
@@ -253,61 +282,12 @@ class DFPManager:
     ### ATTRIBUTES ###
 
 
-# Global state management
-_active_manager: Optional[DFPManager] = None
-_last_results: List[Payload] = []
-
-
-def start_new_session(fp_js: str, request_id: str) -> DFPManager:
-    """Start a new DFP session, clearing any existing state."""
-    global _active_manager, _last_results
-    
-    # Save current results before clearing (if any)
-    if _active_manager is not None:
-        _last_results = _active_manager.get_all_payloads()
-    
-    _active_manager = DFPManager(fp_js=fp_js)
-    _active_manager.request_id = request_id
-    return _active_manager
-
-
-def get_active_manager() -> Optional[DFPManager]:
-    """Get the currently active DFP manager."""
-    return _active_manager
-
-
-def complete_session() -> List[Payload]:
-    """Complete the current session and save results."""
-    global _active_manager, _last_results
-    
-    if _active_manager is not None:
-        _last_results = _active_manager.get_all_payloads()
-        _active_manager = None
-    
-    return _last_results
-
-
-def get_last_results() -> List[Payload]:
-    """Get the results from the last completed session."""
-    return _last_results
-
-
-def update_fingerprint(
-    order_id: int, fingerprint: str, device_name: Optional[str] = None
-) -> bool:
-    """Update fingerprint in the active session."""
-    manager = get_active_manager()
-    if manager is None:
-        return False
-    return manager.update_fingerprint(order_id, fingerprint, device_name)
+# Global state management - similar to PayloadManager pattern
+dfp_manager = DFPManager()
 
 
 __all__ = [
     "DFPManager",
+    "dfp_manager",
     "reserve_offset_range",
-    "start_new_session",
-    "get_active_manager",
-    "complete_session",
-    "get_last_results",
-    "update_fingerprint",
 ]
