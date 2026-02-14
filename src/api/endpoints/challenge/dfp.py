@@ -178,50 +178,37 @@ class DFPManager:
 
     def calculate_score(self) -> float:
         """
-        Calculate the scoring based on strict fingerprint uniqueness (Hard Collisions Only).
-        
-        Logic:
-        1. Numerator: Count of devices that provided a UNIQUE fingerprint.
-        2. Denominator: Total number of expected devices.
-        3. Result: Numerator / Denominator.
+        Calculate score based on strict consistency and uniqueness rules.
         """
-        _unique_ids = {d.id for d in self.target_devices}
-        total_expected = len(_unique_ids)
+        # Using a set ensures that identical fingerprints for one device are collapsed into one.
+        fingerprints_by_device = defaultdict(set)
+        for payload in self.payloads.values():
+            if payload.fingerprint:
+                fingerprints_by_device[payload.device_id].add(payload.fingerprint)
 
-        valid_payloads = [p for p in self.payloads.values() if p.fingerprint]
+        # A device is ONLY consistent if it has exactly 1 unique fingerprint string across all browsers.
+        consistent_identities = {}
+        for device_id, fingerprints in fingerprints_by_device.items():
+            if len(fingerprints) == 1:
+                # Phone passed the 'Internal Consistency' check
+                consistent_identities[device_id] = list(fingerprints)[0]
+            else:
+                logger.warning(f"Scoring: Device {device_id} failed Consistency Check (Browsers do not match).")
 
-        logger.info(f"Scoring: Total unique physical devices: {total_expected}")
-        logger.info(f"Scoring: Total fingerprints received: {len(valid_payloads)}")
+        all_consistent_fingerprints = list(consistent_identities.values())
+        perfect_device_count = 0
+        
+        for device_id, identity in consistent_identities.items():
+            if all_consistent_fingerprints.count(identity) == 1:
+                perfect_device_count += 1
+                logger.success(f"Scoring: Device {device_id} passed both Consistency and Uniqueness checks.")
+            else:
+                logger.warning(f"Scoring: Device {device_id} failed Uniqueness Check (Collision with other phone).")
 
-        if not valid_payloads:
-            logger.warning("No valid payloads to score (no fingerprints received).")
-            self.score_value = 0.0
-            return self.score_value
-
-        fingerprint_to_devices: Dict[str, Set[int]] = defaultdict(set)
-        for p in valid_payloads:
-            if p.fingerprint:
-                fingerprint_to_devices[p.fingerprint].add(p.device_id)
-
-        collision_devices = set()
-        for fp, dev_ids in fingerprint_to_devices.items():
-            if len(dev_ids) > 1:
-                for dev_id in dev_ids:
-                    collision_devices.add(dev_id)
-                    logger.debug(f"Device {dev_id} has collision with fingerprint {fp[:10]}...")
-
-        total_points = 0.0
-        participating_devices = {p.device_id for p in valid_payloads}
-
-        for dev_id in participating_devices:
-            if dev_id not in collision_devices:
-                total_points += 1.0
-
-        self.score_value = total_points / total_expected
-
-        logger.info(f"Scoring Breakdown: {len(participating_devices)}/{total_expected} physical devices responded, {len(collision_devices)} collisions, {total_points} unique.")
-        logger.info(f"Final Score Calculation: {total_points} / {total_expected} = {self.score_value:.3f}")
-
+        total_expected_devices = len({device.id for device in self.target_devices})
+        self.score_value = perfect_device_count / total_expected_devices if total_expected_devices > 0 else 0.0
+        
+        logger.info(f"Final Score: {perfect_device_count} / {total_expected_devices} = {self.score_value:.3f}")
         return round(self.score_value, 3)
 
     def get_all_payloads(self) -> List[Payload]:
