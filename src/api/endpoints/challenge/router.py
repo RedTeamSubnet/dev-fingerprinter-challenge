@@ -113,19 +113,17 @@ def post_fingerprint(
     order_id: int = Body(..., ge=0, lt=1000000, examples=[0]),
     fingerprint: str = Body(
         ..., min_length=2, max_length=128, pattern=ALPHANUM_HYPHEN_REGEX
-    ),
-    device_name: Optional[str] = Body(None, min_length=1, max_length=128),
+    )
 ):
     _request_id = request.state.request_id
     logger.info(
-        f"[{_request_id}] - Setting device fingerprint as {{'order_id': {order_id}, 'fingerprint': '{fingerprint}', 'device_name': '{device_name}'}} ..."
+        f"[{_request_id}] - Setting device fingerprint as {{'order_id': {order_id}, 'fingerprint': '{fingerprint}'}} ..."
     )
 
     try:
         service.set_fingerprint(
             order_id=order_id,
             fingerprint=fingerprint,
-            device_name=device_name,
         )
 
         logger.success(

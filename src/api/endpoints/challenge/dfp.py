@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
-
-import os
 import random
-import fcntl
+import time
 from typing import Optional, List, Dict, Set
 from collections import defaultdict
 
@@ -15,36 +13,13 @@ from api.logger import logger
 from .schemas import Payload
 
 
-OFFSET_FILE = os.path.join("/var/lib/rest.dfp-challenger", "order_offset.txt")
-
-
-def reserve_offset_range(count: int) -> int:
-    """Atomically reserve a range of order IDs and return the start ID."""
-    try:
-        os.makedirs(os.path.dirname(OFFSET_FILE), exist_ok=True)
-        with open(OFFSET_FILE, "a+") as f:
-            fcntl.flock(f.fileno(), fcntl.LOCK_EX)
-            try:
-                f.seek(0)
-                content = f.read().strip()
-                start_id = int(content) if content else 0
-                f.seek(0)
-                f.truncate()
-                f.write(str(start_id + count))
-                return start_id
-            finally:
-                fcntl.flock(f.fileno(), fcntl.LOCK_UN)
-    except Exception as e:
-        logger.error(f"Failed to reserve offset range: {e}")
-        return 0
-
-
 class DFPManager:
     """Manages device fingerprinting sessions and scoring."""
 
     @validate_call
     def __init__(self, fp_js: str = ""):
-        self.fp_js = fp_js
+        if fp_js:
+            self.fp_js = fp_js
         self.restart_manager()
 
     def restart_manager(self, fp_js: str = "") -> None:
@@ -78,7 +53,7 @@ class DFPManager:
         )
 
     def update_fingerprint(
-        self, order_id: int, fingerprint: str, device_name: Optional[str] = None
+        self, order_id: int, fingerprint: str
     ) -> bool:
         """Update fingerprint for a device."""
         if order_id not in self.payloads:
@@ -95,8 +70,6 @@ class DFPManager:
 
         payload = self.payloads[order_id]
         payload.fingerprint = fingerprint.strip()
-        if device_name:
-            payload.reported_device_name = device_name
 
         target.state = DeviceStateEnum.COMPLETED
         return True
@@ -124,10 +97,10 @@ class DFPManager:
         devices: List[DevicePM],
         browsers: List[str],
         n_repeat: int,
-    ) -> Dict[int, Dict[str, List[dict]]]:
+    ) -> Dict[str, List[dict]]:
         """Generate session structure with shuffled browsers and devices per batch.
         
-        Structure: dict[batch_number: dict[browser: list_of_device_info]]
+        Structure: dict[browser: list_of_device_info]
         Each batch uses one browser for all devices.
         Devices are shuffled and assigned order_ids in shuffled order.
         """
@@ -137,23 +110,21 @@ class DFPManager:
         if not active_devices:
             raise ValueError("No active devices found to generate session structure!")
         
-        # Shuffle browsers once for all batches
-        shuffled_browsers = browsers.copy()
-        random.shuffle(shuffled_browsers)
+        shuffled_browsers = []
+        for n in range(1, n_repeat+1):
+            shuffled = browsers.copy()
+            shuffled = [f"{b}_{n}" for b in shuffled] 
+            random.shuffle(shuffled)
+            shuffled_browsers.extend(shuffled)
         
-        structure: Dict[int, Dict[str, List[dict]]] = {}
+        
+        structure: Dict[str, List[dict]] = defaultdict(list)
         current_order_id = self.start_id
         
-        for batch_idx in range(n_repeat):
-            # Select browser for this batch (cycle through shuffled browsers if needed)
-            browser = shuffled_browsers[batch_idx % len(shuffled_browsers)]
-            
-            # Shuffle devices for this batch
+        for browser in shuffled_browsers:
             batch_devices = active_devices.copy()
             random.shuffle(batch_devices)
             
-            # Create device info list with order_ids
-            device_infos = []
             for device_cfg in batch_devices:
                 self.add_device(
                     order_id=current_order_id,
@@ -161,18 +132,16 @@ class DFPManager:
                     browser=browser
                 )
                 
-                device_infos.append({
+                structure[browser].append({
                     "device_cfg": device_cfg,
                     "order_id": current_order_id,
                     "device": self.target_devices[-1],
                     "email": device_cfg.email,
+                    "browser": browser,
                 })
                 
                 current_order_id += 1
-            
-            # Store in structure: batch_idx -> browser -> list of device infos
-            structure[batch_idx] = {browser: device_infos}
-        
+                    
         self.session_structure = structure
         return structure
 
@@ -258,6 +227,22 @@ class DFPManager:
     def get_all_payloads(self) -> List[Payload]:
         """Return all collected payloads."""
         return list(self.payloads.values())
+    
+    def wait_for_batch_completion(self, browser, batch_order_ids, fp_timeout):
+        elapsed = 0
+        logger.info(f"Waiting for batch {browser} to complete with timeout of {fp_timeout} seconds...")
+        while True:
+            pending = self.get_pending_devices()
+            if not pending:
+                logger.info(f"Batch {browser} completed.")
+                break
+            if elapsed >= fp_timeout:
+                logger.warning(f"Batch {browser} timed out.")
+                for order_id in batch_order_ids:
+                    self.set_device_timeout(order_id)
+                break
+            elapsed += 1
+            time.sleep(1)
 
     ### ATTRIBUTES ###
     @property
@@ -288,6 +273,5 @@ dfp_manager = DFPManager()
 
 __all__ = [
     "DFPManager",
-    "dfp_manager",
-    "reserve_offset_range",
+    "dfp_manager"
 ]

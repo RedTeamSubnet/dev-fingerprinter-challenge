@@ -11,8 +11,7 @@ function createPayload(fingerprint, orderId) {
 
 	return {
 		fingerprint: hash,
-		timestamp: new Date().toISOString(),
-		order_id: orderId,
+		order_id: parseInt(orderId, 10),
 	};
 }
 
@@ -48,7 +47,7 @@ export async function runFingerprinting() {
 	}
 
 	const urlParams = new URLSearchParams(window.location.search);
-	const orderId = urlParams.get("order_id") || "unknown";
+	const orderId = window.ORDER_ID || "unknown";
 
 	const fingerprint = collectFingerprint();
 	const payload = createPayload(fingerprint, orderId);

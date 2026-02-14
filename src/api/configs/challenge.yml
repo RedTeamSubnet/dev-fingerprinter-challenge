@@ -8,7 +8,7 @@ challenge:
   smtp_user: "user@example.com"
   smtp_password: "password"
   email_sender: "noreply@example.com"
-  n_repeat: 10
+  n_repeat: 2
   random_seed: null
   fp_timeout: 120
   proxy_inter_base_url: "http://localhost:8000"
