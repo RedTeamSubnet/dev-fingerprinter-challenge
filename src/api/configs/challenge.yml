@@ -8,22 +8,16 @@ challenge:
   smtp_user: "user@example.com"
   smtp_password: "password"
   email_sender: "noreply@example.com"
-  n_repeat: 2
+  n_repeat: 1
   random_seed: null
-  fp_timeout: 120
+  fp_timeout: 30
   proxy_inter_base_url: "http://localhost:8000"
   proxy_exter_base_url: "http://dfp-proxy:8000"
   devices_fname: "devices.json"
   devices: []
   scoring:
-    weights:
-      fragmentation: 0.3
-      soft_collision: 0.15
-      hard_collision: 0.55
-    thresholds:
-      fragmentation:
-        inconsistency_pct: 0.25
-        frag_pct: 0.2
-      collision:
-        soft_pct: 0.35
-        hard_pct: 0.15
+    min_devices: 2
+    fragmentation_penalty: 0.3
+    collision_penalty: 0.25
+    max_fragmentation: 3
+    max_collision: 3

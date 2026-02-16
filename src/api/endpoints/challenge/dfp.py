@@ -7,6 +7,7 @@ from collections import defaultdict
 import requests
 from pydantic import validate_call, AnyHttpUrl, SecretStr
 
+from api.config import config
 from api.core.configs.challenge import DevicePM, DeviceStateEnum, DeviceStatusEnum
 from api.logger import logger
 
@@ -178,38 +179,78 @@ class DFPManager:
 
     def calculate_score(self) -> float:
         """
-        Calculate score based on strict consistency and uniqueness rules.
+        Calculates final score by aggregating all batches  
+        into physical device identities and applying the 'Two-Strike' collision rule.
         """
-        # Using a set ensures that identical fingerprints for one device are collapsed into one.
-        fingerprints_by_device = defaultdict(set)
+        scoring_cfg = config.challenge.scoring
+
+        # Result: { physical_id: [Payload1, Payload2, ...] }
+        payloads_by_device = defaultdict(list)
         for payload in self.payloads.values():
             if payload.fingerprint:
-                fingerprints_by_device[payload.device_id].add(payload.fingerprint)
+                payloads_by_device[payload.device_id].append(payload)
 
-        # A device is ONLY consistent if it has exactly 1 unique fingerprint string across all browsers.
-        consistent_identities = {}
-        for device_id, fingerprints in fingerprints_by_device.items():
-            if len(fingerprints) == 1:
-                # Phone passed the 'Internal Consistency' check
-                consistent_identities[device_id] = list(fingerprints)[0]
-            else:
-                logger.warning(f"Scoring: Device {device_id} failed Consistency Check (Browsers do not match).")
+        # Must have at least 2 unique physical phones reporting
+        active_device_ids = list(payloads_by_device.keys())
+        if len(active_device_ids) < scoring_cfg.min_devices:
+            logger.warning(f"Scoring: Only {len(active_device_ids)} physical devices reported. Min {scoring_cfg.min_devices} required.")
+            return 0.0
 
-        all_consistent_fingerprints = list(consistent_identities.values())
-        perfect_device_count = 0
+        # Which physical devices share which strings across ALL batches
+        # Result: { "FP_STRING_A": {device_1, device_2} }
+        devices_sharing_fingerprint = defaultdict(set)
+        for device_id, payloads in payloads_by_device.items():
+            for payload in payloads:
+                devices_sharing_fingerprint[p.fingerprint].add(device_id)
+
+        # Calculate Points for each Target Physical Device
+        total_session_points = 0.0
+        target_physical_ids = {d.id for d in self.target_devices}
         
-        for device_id, identity in consistent_identities.items():
-            if all_consistent_fingerprints.count(identity) == 1:
-                perfect_device_count += 1
-                logger.success(f"Scoring: Device {device_id} passed both Consistency and Uniqueness checks.")
-            else:
-                logger.warning(f"Scoring: Device {device_id} failed Uniqueness Check (Collision with other phone).")
+        for device_id in target_physical_ids:
+            device_payloads = payloads_by_device.get(device_id, [])
+            
+            # If a device never reported, it contributes 0.0 to the average
+            if not device_payloads:
+                continue
+            
+            device_points = 1.0
+            unique_fps = {payload.fingerprint for payload in device_payloads}
+            unique_fps_count = len(unique_fps)
+            
+            # Rule 1 Fragmentation (Internal Consistency)
+            if unique_fps_count >= scoring_cfg.max_fragmentation:
+                logger.warning(f"Scoring: Device {device_id} reached fragmentation limit ({unique_fps_count} unique IDs).")
+                device_points = 0.0
+            elif unique_fps_count > 1:
+                penalty = scoring_cfg.fragmentation_penalty * (unique_fps_count - 1)
+                device_points -= penalty
+                logger.info(f"Scoring: Device {device_id} fragmented. Penalty: -{penalty:.2f}")
 
-        total_expected_devices = len({device.id for device in self.target_devices})
-        self.score_value = perfect_device_count / total_expected_devices if total_expected_devices > 0 else 0.0
+            # Rule 2 Two-Strike Collision (External Uniqueness)
+            if device_points > 0:
+                collision_batches_count = 0
+                for p in device_payloads:
+                    # Does this specific payload's fingerprint match ANY other physical device in the entire session?
+                    if len(devices_sharing_fingerprint[p.fingerprint]) > 1:
+                        collision_batches_count += 1
+                
+                # Strike 1: 1 batch with collision (-0.25 Penalty)
+                # Strike 2: 2+ batches with collision (0.0 Score)
+                if collision_batches_count >= 2:
+                    logger.warning(f"Scoring: Device {device_id} failed uniqueness in {collision_batches_count} batches. Score: 0.0")
+                    device_points = 0.0
+                elif collision_batches_count == 1:
+                    device_points -= scoring_cfg.collision_penalty
+                    logger.info(f"Scoring: Device {device_id} collided in 1 batch. Penalty: -{scoring_cfg.collision_penalty:.2f}")
+
+            total_session_points += max(0.0, device_points)
+
+        # Final Normalization (Average across all expected physical phones)
+        final_score = total_session_points / len(target_physical_ids)
+        logger.success(f"Final Session Score: {total_session_points:.2f} / {len(target_physical_ids)} devices = {final_score:.3f}")
         
-        logger.info(f"Final Score: {perfect_device_count} / {total_expected_devices} = {self.score_value:.3f}")
-        return round(self.score_value, 3)
+        return round(min(1.0, max(0.0, final_score)), 3)
 
     def get_all_payloads(self) -> List[Payload]:
         """Return all collected payloads."""
