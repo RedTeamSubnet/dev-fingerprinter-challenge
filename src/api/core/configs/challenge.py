@@ -35,14 +35,14 @@ class DeviceStateEnum(str, Enum):
 
 
 class DevicePM(BaseModel):
-    id: conint(gt=0) = Field(...)  # type: ignore
-    ts_node_id: constr(strip_whitespace=True, min_length=2, max_length=64) = Field(...)  # type: ignore
-    ts_name: constr(strip_whitespace=True, min_length=2, max_length=64) = Field(...)  # type: ignore
+    id: int = Field(..., gt=0)  # type: ignore
+    ts_node_id: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
+    ts_name: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
     ts_ip: IPvAnyAddress = Field(...)
-    device_model: Optional[constr(strip_whitespace=True, min_length=2, max_length=64)] = Field(default=None)  # type: ignore
+    device_model: Optional[str] = Field(default=None, strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
     email: EmailStr = Field(...)
-    browser: constr(strip_whitespace=True, min_length=2, max_length=64) = Field(...)  # type: ignore
-    fingerprint: Optional[constr(strip_whitespace=True, min_length=2, max_length=256)] = Field(default=None)  # type: ignore
+    browser: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
+    fingerprint: Optional[str] = Field(default=None, strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
     state: DeviceStateEnum = Field(default=DeviceStateEnum.NOT_SET)
     status: DeviceStatusEnum = Field(default=DeviceStatusEnum.ACTIVE)
 
@@ -51,58 +51,40 @@ class DeviceConfig(DevicePM, FrozenBaseConfig):
     pass
 
 
-class FragmentationThresholds(BaseModel):
-    inconsistency_pct: float = Field(...)
-    frag_pct: float = Field(...)
-
-
-class CollisionThresholds(BaseModel):
-    soft_pct: float = Field(...)
-    hard_pct: float = Field(...)
-
-
-class ThresholdsConfig(BaseModel):
-    fragmentation: FragmentationThresholds = Field(...)
-    collision: CollisionThresholds = Field(...)
-
-
-class WeightsConfig(BaseModel):
-    fragmentation: float = Field(...)
-    soft_collision: float = Field(...)
-    hard_collision: float = Field(...)
-
-
 class ScoringConfig(FrozenBaseConfig):
-    weights: WeightsConfig = Field(...)
-    thresholds: ThresholdsConfig = Field(...)
+    min_devices: int = Field(default=2, ge=1)
+    fragmentation_penalty: float = Field(default=0.3)
+    collision_penalty: float = Field(default=0.25)
+    max_fragmentation: int = Field(default=3, ge=1)
+    max_collision: int = Field(default=3, ge=1)
 
     model_config = SettingsConfigDict(env_prefix=f"{ENV_PREFIX}SCORING_")
 
 
 class ChallengeConfig(FrozenBaseConfig):
     api_key: SecretStr = Field(..., min_length=8, max_length=128)
-    fp_js_fname: constr(strip_whitespace=True, min_length=2, max_length=256) = Field(  # type: ignore
-        ...
+    fp_js_fname: str = Field(  # type: ignore
+        ..., strip_whitespace=True, min_length=2, max_length=256
     )
     ts_api_token: SecretStr = Field(..., min_length=8, max_length=128)
-    ts_tailnet: constr(strip_whitespace=True, min_length=2, max_length=256) = Field(...)  # type: ignore
-    ts_device_tag: constr(strip_whitespace=True, min_length=2, max_length=64) = Field(  # type: ignore
-        ...
+    ts_tailnet: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
+    ts_device_tag: str = Field(  # type: ignore
+        ..., strip_whitespace=True, min_length=2, max_length=64
     )
     ts_static_ip: IPvAnyAddress = Field(...)
     change_ts_ip: bool = Field(...)
-    smtp_host: constr(strip_whitespace=True, min_length=2, max_length=256) = Field(...)  # type: ignore
-    smtp_port: conint(ge=1, le=65535) = Field(...)  # type: ignore
-    smtp_user: constr(strip_whitespace=True, min_length=2, max_length=256) = Field(...)  # type: ignore
+    smtp_host: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
+    smtp_port: int = Field(..., ge=1, le=65535)  # type: ignore
+    smtp_user: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
     smtp_password: SecretStr = Field(..., min_length=8, max_length=128)
     email_sender: EmailStr = Field(...)
-    n_repeat: conint(ge=1) = Field(...)  # type: ignore
+    n_repeat: int = Field(..., ge=1)  # type: ignore
     random_seed: Optional[int] = Field(default=None)
-    fp_timeout: conint(ge=1) = Field(...)  # type: ignore
+    fp_timeout: int = Field(..., ge=1)  # type: ignore
     proxy_inter_base_url: AnyHttpUrl = Field(...)
     proxy_exter_base_url: AnyHttpUrl = Field(...)
-    devices_fname: constr(strip_whitespace=True, min_length=2, max_length=256) = Field(  # type: ignore
-        ...
+    devices_fname: str = Field(  # type: ignore
+        ..., strip_whitespace=True, min_length=2, max_length=256
     )
     devices: list[DeviceConfig] = Field(default_factory=list)
     scoring: ScoringConfig = Field(...)

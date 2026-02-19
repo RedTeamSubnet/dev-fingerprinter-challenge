@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 import random
 import time
-from typing import Optional, List, Dict, Set
+from typing import Optional, List, Dict
 from collections import defaultdict
 
 import requests
@@ -32,8 +32,9 @@ class DFPManager:
         self.session_map: Dict[int, int] = {}
         self.score_value: float = 0.0
         self.start_id: int = 0
+        self.current_browser: Optional[str] = None
         self.request_id: Optional[str] = None
-        self.session_structure: Dict[int, Dict[str, List[dict]]] = {}
+        self.session_structure: Dict[str, List[dict]] = {}
 
     @validate_call
     def add_device(
@@ -51,6 +52,7 @@ class DFPManager:
             order_id=order_id,
             device_id=device_cfg.id,
             device_name=device_cfg.device_model or "Unknown",
+                browser=browser,
         )
 
     def update_fingerprint(
@@ -71,7 +73,7 @@ class DFPManager:
 
         payload = self.payloads[order_id]
         payload.fingerprint = fingerprint.strip()
-
+        logger.success(f"Received fingerprint for device: {target.device_model} (order_id: {order_id})")
         target.state = DeviceStateEnum.COMPLETED
         return True
 
@@ -200,7 +202,7 @@ class DFPManager:
         # Result: { "FP_STRING_A": {device_1, device_2} }
         devices_sharing_fingerprint = defaultdict(set)
         for device_id, payloads in payloads_by_device.items():
-            for payload in payloads:
+            for p in payloads:
                 devices_sharing_fingerprint[p.fingerprint].add(device_id)
 
         # Calculate Points for each Target Physical Device
@@ -248,7 +250,7 @@ class DFPManager:
 
         # Final Normalization (Average across all expected physical phones)
         final_score = total_session_points / len(target_physical_ids)
-        logger.success(f"Final Session Score: {total_session_points:.2f} / {len(target_physical_ids)} devices = {final_score:.3f}")
+        logger.info(f"Final Session Score: {total_session_points:.2f} / {len(target_physical_ids)} devices = {final_score:.3f}")
         
         return round(min(1.0, max(0.0, final_score)), 3)
 
