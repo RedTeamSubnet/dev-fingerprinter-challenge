@@ -20,7 +20,7 @@ email_helper = EmailHelper(
     email_sender=config.challenge.email_sender,
 )
 
-BROWSERS = ["chrome", "brave"] #, "firefox-focus", "duckduckgo", "safari"]
+BROWSERS = ["chrome", "brave", "firefox-focus", "duckduckgo", "safari"]
 
 
 def get_task() -> MinerInput:
@@ -76,7 +76,7 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
         logger.info(f"[{request_id}] - Processing Batch {browser} {len(session_structure)} with browser: {browser}")
 
         batch_order_ids = []
-        
+        dfp_manager.current_browser = browser
         sync_device_with_proxy(request_id, proxy_base_url, browser_devices)
 
         subject = f"Running browser: {browser}"
