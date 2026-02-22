@@ -43,6 +43,5 @@ package-dir = {"" = "src"}
 where = ["src"]
 
 [tool.setuptools.dynamic]
-version = { file = "__version__.py" }
+version = { file = "dev-fingerprinter-challenge.__version__.py" }
 dependencies = { file = ["requirements.txt"] }
-	
