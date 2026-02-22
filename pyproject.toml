@@ -10,7 +10,7 @@ description = "Bot detection challenge for Bittensor RedTeam Subnet"
 readme = "README.md"
 requires-python = ">=3.10,<4.0"
 keywords = ["bittensor", "redteam", "challenge", "bot-detection", "fastapi"]
-license = { text = "MIT" }
+license = "MIT"
 classifiers = [
 	"Development Status :: 3 - Alpha",
 	"Intended Audience :: Developers",
@@ -34,14 +34,13 @@ Documentation = "https://docs.theredteam.io"
 Issues = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge/issues"
 
 
-
 [tool.setuptools]
 include-package-data = true
-packages = ["dev-fingerprinter-challenge"]
+package-dir = { "" = "src" }
 
-[tool.setuptools.package-dir]
-dev-fingerprinter-challenge = "."
+[tool.setuptools.packages.find]
+where = ["src"]
 
 [tool.setuptools.dynamic]
-version = { attr = "dev-fingerprinter-challenge.__version__" }
+version = { file = "dev-fingerprinter-challenge.__version__.py" }
 dependencies = { file = ["requirements.txt"] }
