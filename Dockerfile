@@ -28,8 +28,6 @@ RUN _BUILD_TARGET_ARCH=$(uname -m) && \
 		ca-certificates \
 		build-essential \
 		git \
-		graphviz \
-		graphviz-dev \
 		wget \
 		curl && \
 	_MINICONDA_VERSION=py310_25.5.1-0 && \
@@ -52,8 +50,6 @@ RUN _BUILD_TARGET_ARCH=$(uname -m) && \
 		-c https://repo.anaconda.com/pkgs/r && \
 	/opt/conda/condabin/conda update -y conda && \
 	/opt/conda/condabin/conda install -y python=${PYTHON_VERSION} pip && \
-	# /opt/conda/condabin/conda install -y python=${PYTHON_VERSION} graphviz pip && \
-	# /opt/conda/condabin/conda install -y --channel conda-forge pygraphviz && \
 	/opt/conda/bin/pip install --timeout 60 -U pip
 
 COPY requirements ./requirements
@@ -114,8 +110,6 @@ RUN rm -rfv /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* /root/.cache/*
 		net-tools \
 		curl \
 		iproute2 \
-		graphviz \
-		graphviz-dev \
 		nano && \
 	apt-get clean -y && \
 	sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
