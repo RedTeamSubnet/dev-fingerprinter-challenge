@@ -39,12 +39,10 @@ Issues = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge/issues"
 include-package-data = true
 package-dir = {"" = "src"}
 
-[tool.setuptools.package-data]
-api = ["VERSION"]
-
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.dynamic]
-version = { file = "src/api/VERSION" }
+version = { file = "__version__.py" }
 dependencies = { file = ["requirements.txt"] }
+	
