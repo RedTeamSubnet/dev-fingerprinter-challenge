@@ -1,9 +1,6 @@
 # Device Fingerprinter V2 Challenge
 
-The **Device Fingerprinter V1 Challenge** is designed to test the skills of miners in developing a browser SDK that can accurately detect the driver type used by bots interacting with a webpage. **The new iteration has two more bot frameworks to be detected and more strict evaluation criteria.** Participants must create an SDK that can be installed on a website and automatically identify various bot drivers based on their behavior or technical characteristics.
-
-<img width="1920" height="1080" alt="image" src="https://github.com/user-attachments/assets/86964cf3-d086-42ba-a704-3b8788deda1b" />
-
+The **Device Fingerprinter V2 Challenge** is designed to test the skills of miners in developing a browser SDK that can accurately detect the driver type used by bots interacting with a webpage. **The new iteration has two more bot frameworks to be detected and more strict evaluation criteria.** Participants must create an SDK that can be installed on a website and automatically identify various bot drivers based on their behavior or technical characteristics.
 
 ## ✨ Features
 
@@ -50,14 +47,14 @@ cd ~/workspaces/projects
 
 ```sh
 git clone https://github.com/RedTeamSubnet/RedTeam.git && \
-    cd RedTeam/redteam_core/challenge_pool/dev_fingerprinter_v1
+    cd RedTeam/redteam_core/challenge_pool/dev_fingerprinter_v2
 ```
 
 **OPTION B.** Clone the repository (for **DEVELOPMENT**: git + ssh key):
 
 ```sh
 git clone --recursive git@github.com:RedTeamSubnet/RedTeam.git && \
-    cd RedTeam/redteam_core/challenge_pool/dev_fingerprinter_v1 && \
+    cd RedTeam/redteam_core/challenge_pool/dev_fingerprinter_v2 && \
     git submodule update --init --recursive && \
     git submodule foreach --recursive git checkout main
 ```
