@@ -52,7 +52,7 @@ class DFPManager:
             order_id=order_id,
             device_id=device_cfg.id,
             device_name=device_cfg.device_model or "Unknown",
-                browser=browser,
+            browser=browser,
         )
 
     def update_fingerprint(
