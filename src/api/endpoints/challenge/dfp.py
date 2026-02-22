@@ -37,9 +37,7 @@ class DFPManager:
         self.session_structure: Dict[str, List[dict]] = {}
 
     @validate_call
-    def add_device(
-        self, order_id: int, device_cfg: DevicePM, browser: str
-    ) -> None:
+    def add_device(self, order_id: int, device_cfg: DevicePM, browser: str) -> None:
         """Add a device to the session."""
         target = DevicePM(**device_cfg.model_dump())
         target.state = DeviceStateEnum.READY
@@ -55,9 +53,7 @@ class DFPManager:
             browser=browser,
         )
 
-    def update_fingerprint(
-        self, order_id: int, fingerprint: str
-    ) -> bool:
+    def update_fingerprint(self, order_id: int, fingerprint: str) -> bool:
         """Update fingerprint for a device."""
         if order_id not in self.payloads:
             return False
@@ -73,7 +69,9 @@ class DFPManager:
 
         payload = self.payloads[order_id]
         payload.fingerprint = fingerprint.strip()
-        logger.success(f"Received fingerprint for device: {target.device_model} (order_id: {order_id})")
+        logger.success(
+            f"Received fingerprint for device: {target.device_model} (order_id: {order_id})"
+        )
         target.state = DeviceStateEnum.COMPLETED
         return True
 
@@ -102,49 +100,48 @@ class DFPManager:
         n_repeat: int,
     ) -> Dict[str, List[dict]]:
         """Generate session structure with shuffled browsers and devices per batch.
-        
+
         Structure: dict[browser: list_of_device_info]
         Each batch uses one browser for all devices.
         Devices are shuffled and assigned order_ids in shuffled order.
         """
         # Get only active devices
         active_devices = [d for d in devices if d.status == DeviceStatusEnum.ACTIVE]
-        
+
         if not active_devices:
             raise ValueError("No active devices found to generate session structure!")
-        
+
         shuffled_browsers = []
-        for n in range(1, n_repeat+1):
+        for n in range(1, n_repeat + 1):
             shuffled = browsers.copy()
-            shuffled = [f"{b}_{n}" for b in shuffled] 
+            shuffled = [f"{b}_{n}" for b in shuffled]
             random.shuffle(shuffled)
             shuffled_browsers.extend(shuffled)
-        
-        
+
         structure: Dict[str, List[dict]] = defaultdict(list)
         current_order_id = self.start_id
-        
+
         for browser in shuffled_browsers:
             batch_devices = active_devices.copy()
             random.shuffle(batch_devices)
-            
+
             for device_cfg in batch_devices:
                 self.add_device(
-                    order_id=current_order_id,
-                    device_cfg=device_cfg,
-                    browser=browser
+                    order_id=current_order_id, device_cfg=device_cfg, browser=browser
                 )
-                
-                structure[browser].append({
-                    "device_cfg": device_cfg,
-                    "order_id": current_order_id,
-                    "device": self.target_devices[-1],
-                    "email": device_cfg.email,
-                    "browser": browser,
-                })
-                
+
+                structure[browser].append(
+                    {
+                        "device_cfg": device_cfg,
+                        "order_id": current_order_id,
+                        "device": self.target_devices[-1],
+                        "email": device_cfg.email,
+                        "browser": browser,
+                    }
+                )
+
                 current_order_id += 1
-                    
+
         self.session_structure = structure
         return structure
 
@@ -181,7 +178,7 @@ class DFPManager:
 
     def calculate_score(self) -> float:
         """
-        Calculates final score by aggregating all batches  
+        Calculates final score by aggregating all batches
         into physical device identities and applying the 'Two-Strike' collision rule.
         """
         scoring_cfg = config.challenge.scoring
@@ -195,7 +192,9 @@ class DFPManager:
         # Must have at least 2 unique physical phones reporting
         active_device_ids = list(payloads_by_device.keys())
         if len(active_device_ids) < scoring_cfg.min_devices:
-            logger.warning(f"Scoring: Only {len(active_device_ids)} physical devices reported. Min {scoring_cfg.min_devices} required.")
+            logger.warning(
+                f"Scoring: Only {len(active_device_ids)} physical devices reported. Min {scoring_cfg.min_devices} required."
+            )
             return 0.0
 
         # Which physical devices share which strings across ALL batches
@@ -208,26 +207,30 @@ class DFPManager:
         # Calculate Points for each Target Physical Device
         total_session_points = 0.0
         target_physical_ids = {d.id for d in self.target_devices}
-        
+
         for device_id in target_physical_ids:
             device_payloads = payloads_by_device.get(device_id, [])
-            
+
             # If a device never reported, it contributes 0.0 to the average
             if not device_payloads:
                 continue
-            
+
             device_points = 1.0
             unique_fps = {payload.fingerprint for payload in device_payloads}
             unique_fps_count = len(unique_fps)
-            
+
             # Rule 1 Fragmentation (Internal Consistency)
             if unique_fps_count >= scoring_cfg.max_fragmentation:
-                logger.warning(f"Scoring: Device {device_id} reached fragmentation limit ({unique_fps_count} unique IDs).")
+                logger.warning(
+                    f"Scoring: Device {device_id} reached fragmentation limit ({unique_fps_count} unique IDs)."
+                )
                 device_points = 0.0
             elif unique_fps_count > 1:
                 penalty = scoring_cfg.fragmentation_penalty * (unique_fps_count - 1)
                 device_points -= penalty
-                logger.info(f"Scoring: Device {device_id} fragmented. Penalty: -{penalty:.2f}")
+                logger.info(
+                    f"Scoring: Device {device_id} fragmented. Penalty: -{penalty:.2f}"
+                )
 
             # Rule 2 Two-Strike Collision (External Uniqueness)
             if device_points > 0:
@@ -236,31 +239,41 @@ class DFPManager:
                     # Does this specific payload's fingerprint match ANY other physical device in the entire session?
                     if len(devices_sharing_fingerprint[p.fingerprint]) > 1:
                         collision_batches_count += 1
-                
+
                 # Strike 1: 1 batch with collision (-0.25 Penalty)
                 # Strike 2: 2+ batches with collision (0.0 Score)
                 if collision_batches_count >= 2:
-                    logger.warning(f"Scoring: Device {device_id} failed uniqueness in {collision_batches_count} batches. Score: 0.0")
+                    logger.warning(
+                        f"Scoring: Device {device_id} failed uniqueness in {collision_batches_count} batches. Score: 0.0"
+                    )
                     device_points = 0.0
                 elif collision_batches_count == 1:
                     device_points -= scoring_cfg.collision_penalty
-                    logger.info(f"Scoring: Device {device_id} collided in 1 batch. Penalty: -{scoring_cfg.collision_penalty:.2f}")
+                    logger.info(
+                        f"Scoring: Device {device_id} collided in 1 batch. Penalty: -{scoring_cfg.collision_penalty:.2f}"
+                    )
 
             total_session_points += max(0.0, device_points)
 
         # Final Normalization (Average across all expected physical phones)
         final_score = total_session_points / len(target_physical_ids)
-        logger.info(f"Final Session Score: {total_session_points:.2f} / {len(target_physical_ids)} devices = {final_score:.3f}")
-        
+        logger.info(
+            f"Final Session Score: {total_session_points:.2f} / {len(target_physical_ids)} devices = {final_score:.3f}"
+        )
+
         return round(min(1.0, max(0.0, final_score)), 3)
 
     def get_all_payloads(self) -> List[Payload]:
         """Return all collected payloads."""
         return list(self.payloads.values())
-    
-    def wait_for_batch_completion(self, browser, batch_order_ids, fp_timeout):
+
+    def wait_for_batch_completion(
+        self, browser: str, batch_order_ids: list, fp_timeout: int
+    ):
         elapsed = 0
-        logger.info(f"Waiting for batch {browser} to complete with timeout of {fp_timeout} seconds...")
+        logger.info(
+            f"Waiting for batch {browser} to complete with timeout of {fp_timeout} seconds..."
+        )
         while True:
             pending = self.get_pending_devices()
             if not pending:
@@ -294,6 +307,7 @@ class DFPManager:
             raise ValueError("`fp_js` attribute value is empty!")
 
         self.__fp_js = fp_js
+
     ### ATTRIBUTES ###
 
 
@@ -301,7 +315,4 @@ class DFPManager:
 dfp_manager = DFPManager()
 
 
-__all__ = [
-    "DFPManager",
-    "dfp_manager"
-]
+__all__ = ["DFPManager", "dfp_manager"]
