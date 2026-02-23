@@ -6,7 +6,7 @@ from redteam_core.config.main import constants
 from redteam_core.validator.models import MinerChallengeCommit
 
 
-class AADController(Controller):
+class DFPController(Controller):
     """
     A specialized controller for the 'dev_fingerprinter_v1' challenge.
     Inherits from the base Controller and modifies specific logic.

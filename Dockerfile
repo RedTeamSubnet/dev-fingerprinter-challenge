@@ -1,7 +1,6 @@
 # syntax=docker/dockerfile:1
-# check=skip=SecretsUsedInArgOrEnv
 
-ARG BASE_IMAGE=node:22.17.0-bookworm-slim
+ARG BASE_IMAGE=ubuntu:22.04
 
 ARG DEBIAN_FRONTEND=noninteractive
 ARG DFP_API_SLUG="rest.dfp-challenger"
@@ -27,10 +26,11 @@ RUN _BUILD_TARGET_ARCH=$(uname -m) && \
 	apt-get install -y --no-install-recommends \
 		ca-certificates \
 		build-essential \
-		git \
 		wget \
 		curl && \
-	_MINICONDA_VERSION=py310_25.5.1-0 && \
+	curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+	apt-get install -y --no-install-recommends nodejs && \
+	_MINICONDA_VERSION=py310_25.1.1-2 && \
 	if [ "${_BUILD_TARGET_ARCH}" == "x86_64" ]; then \
 		_MINICONDA_FILENAME=Miniconda3-${_MINICONDA_VERSION}-Linux-x86_64.sh && \
 		export _MINICONDA_URL=https://repo.anaconda.com/miniconda/${_MINICONDA_FILENAME}; \
@@ -45,17 +45,14 @@ RUN _BUILD_TARGET_ARCH=$(uname -m) && \
 		wget -nv --show-progress --progress=bar:force:noscroll "${_MINICONDA_URL}" -O "/root/${_MINICONDA_FILENAME}"; \
 	fi && \
 	/bin/bash "/root/${_MINICONDA_FILENAME}" -b -u -p /opt/conda && \
-	/opt/conda/condabin/conda tos accept --override-channels \
-		-c https://repo.anaconda.com/pkgs/main \
-		-c https://repo.anaconda.com/pkgs/r && \
 	/opt/conda/condabin/conda update -y conda && \
 	/opt/conda/condabin/conda install -y python=${PYTHON_VERSION} pip && \
 	/opt/conda/bin/pip install --timeout 60 -U pip
 
 COPY requirements ./requirements
 COPY requirements.txt ./requirements.txt
-COPY --chown=${UID}:${GID} ./src ${DFP_API_DIR}
 RUN /opt/conda/bin/pip install --timeout 60 -r ./requirements.txt
+
 
 
 ## Here is the base image:
@@ -111,6 +108,9 @@ RUN rm -rfv /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* /root/.cache/*
 		curl \
 		iproute2 \
 		nano && \
+	curl -fsSL https://get.docker.com/ | sh -s -- --version ${DOCKER_VERSION} && \
+	curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
+	apt-get install -y --no-install-recommends nodejs && \
 	apt-get clean -y && \
 	sed -i -e 's/# en_US.UTF-8 UTF-8/en_US.UTF-8 UTF-8/' /etc/locale.gen && \
 	sed -i -e 's/# en_AU.UTF-8 UTF-8/en_AU.UTF-8 UTF-8/' /etc/locale.gen && \
@@ -119,10 +119,10 @@ RUN rm -rfv /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* /root/.cache/*
 	echo "LANGUAGE=en_US.UTF-8" >> /etc/default/locale && \
 	echo "LC_ALL=en_US.UTF-8" >> /etc/default/locale && \
 	addgroup --gid ${GID} ${GROUP} && \
-	usermod -l ${USER} -m -d /home/${USER} -s /bin/bash -g ${GROUP} -aG sudo node && \
-	# useradd -lmN -d "/home/${USER}" -s /bin/bash -g ${GROUP} -G sudo -u ${UID} ${USER} && \
+	useradd -lmN -d "/home/${USER}" -s /bin/bash -g ${GROUP} -G sudo -u ${UID} ${USER} && \
 	echo "${USER} ALL=(ALL) NOPASSWD: ALL" > "/etc/sudoers.d/${USER}" && \
 	chmod 0440 "/etc/sudoers.d/${USER}" && \
+	usermod -aG docker ${USER} && \
 	echo -e "${USER}:${HASH_PASSWORD}" | chpasswd -e && \
 	echo -e "\nalias ls='ls -aF --group-directories-first --color=auto'" >> /root/.bashrc && \
 	echo -e "alias ll='ls -alhF --group-directories-first --color=auto'\n" >> /root/.bashrc && \
@@ -145,7 +145,8 @@ ENV LANG=en_US.UTF-8 \
 	LC_ALL=en_US.UTF-8
 
 COPY --from=builder --chown=${UID}:${GID} /opt/conda /opt/conda
-
+COPY --from=builder --chown=${UID}:${GID} /usr/bin/node /usr/bin/node
+COPY --from=builder --chown=${UID}:${GID} /usr/lib/node_modules /usr/lib/node_modules
 
 ## Here is the final image:
 FROM base AS app
