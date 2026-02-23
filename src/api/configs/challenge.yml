@@ -9,6 +9,7 @@ challenge:
   proxy_inter_base_url: "http://localhost:8000"
   devices_fname: "devices.json"
   devices: []
+  browser_names:  ["chrome", "brave", "firefox-focus", "duckduckgo", "safari"]
   scoring:
     min_devices: 2
     fragmentation_penalty: 0.3

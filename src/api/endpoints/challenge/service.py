@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from typing import Optional, List
+from typing import List
 
 from pydantic import validate_call
 
@@ -20,8 +20,6 @@ email_helper = EmailHelper(
     email_sender=config.challenge.email_sender,
 )
 
-BROWSERS = ["chrome", "brave", "firefox-focus", "duckduckgo", "safari"]
-
 
 def get_task() -> MinerInput:
     """Return a new challenge task."""
@@ -33,11 +31,11 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
     """Score a miner's fingerprinter.js submission."""
 
     _n_repeat = config.challenge.n_repeat
-    
+
     # Get active devices for counting
     active_devices = [d for d in config.challenge.devices if d.status.value == "ACTIVE"]
     _total_active = len(active_devices)
-    
+
     if _total_active == 0:
         logger.error(f"[{request_id}] - No active devices found!")
         return 0.0
@@ -56,24 +54,32 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
             api_key=config.challenge.api_key,
         )
     except Exception as e:
-        logger.warning(f"[{request_id}] - Failed to send fingerprinter.js to proxy: {e}")
+        logger.warning(
+            f"[{request_id}] - Failed to send fingerprinter.js to proxy: {e}"
+        )
         raise
 
     # Generate session structure
-    logger.info(f"[{request_id}] - Generating session structure with {_n_repeat} batches...")
+    logger.info(
+        f"[{request_id}] - Generating session structure with {_n_repeat} batches..."
+    )
     session_structure = dfp_manager.gen_session_structure(
         devices=config.challenge.devices,
-        browsers=BROWSERS,
+        browsers=config.challenge.browser_names,
         n_repeat=_n_repeat,
     )
 
-    logger.info(f"[{request_id}] - Starting {_n_repeat} batches of {_total_active} devices...")
+    logger.info(
+        f"[{request_id}] - Starting {_n_repeat} batches of {_total_active} devices..."
+    )
 
     proxy_base_url = str(config.challenge.proxy_inter_base_url).rstrip("/")
 
     for browser, browser_devices in session_structure.items():
-        
-        logger.info(f"[{request_id}] - Processing Batch {browser} {len(session_structure)} with browser: {browser}")
+
+        logger.info(
+            f"[{request_id}] - Processing Batch {browser} {len(session_structure)} with browser: {browser}"
+        )
 
         batch_order_ids = []
         dfp_manager.current_browser = browser
@@ -82,12 +88,16 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
         subject = f"Running browser: {browser}"
         logger.info(f"[{request_id}] - Sending email: '{subject}'")
         email_helper.send(to=config.challenge.email_sender, subject=subject, body=" ")
-        
+
         for _device in browser_devices:
             dfp_manager.set_device_running(_device["order_id"])
             batch_order_ids.append(_device["order_id"])
-    
-        dfp_manager.wait_for_batch_completion(browser=browser, batch_order_ids=batch_order_ids, fp_timeout=config.challenge.fp_timeout)
+
+        dfp_manager.wait_for_batch_completion(
+            browser=browser,
+            batch_order_ids=batch_order_ids,
+            fp_timeout=config.challenge.fp_timeout,
+        )
 
     score_result = dfp_manager.calculate_score()
 
@@ -102,14 +112,11 @@ def get_results() -> List[Payload]:
 @validate_call
 def set_fingerprint(order_id: int, fingerprint: str) -> bool:
     """Receive fingerprint from proxy."""
-    success = dfp_manager.update_fingerprint(
-        order_id=order_id,
-        fingerprint=fingerprint
-    )
-    
+    success = dfp_manager.update_fingerprint(order_id=order_id, fingerprint=fingerprint)
+
     if not success:
         logger.warning(f"Failed to set fingerprint for order_id {order_id}")
-    
+
     return success
 
 

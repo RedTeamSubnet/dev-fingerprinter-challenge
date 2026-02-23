@@ -6,8 +6,6 @@ from typing import Optional
 from pydantic import (
     BaseModel,
     Field,
-    constr,
-    conint,
     SecretStr,
     IPvAnyAddress,
     AnyHttpUrl,
@@ -35,14 +33,18 @@ class DeviceStateEnum(str, Enum):
 
 
 class DevicePM(BaseModel):
-    id: int = Field(..., gt=0)  # type: ignore
-    ts_node_id: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
-    ts_name: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
+    id: int = Field(..., gt=0)
+    ts_node_id: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)
+    ts_name: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)
     ts_ip: IPvAnyAddress = Field(...)
-    device_model: Optional[str] = Field(default=None, strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
+    device_model: Optional[str] = Field(
+        default=None, strip_whitespace=True, min_length=2, max_length=64
+    )
     email: EmailStr = Field(...)
-    browser: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
-    fingerprint: Optional[str] = Field(default=None, strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
+    browser: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)
+    fingerprint: Optional[str] = Field(
+        default=None, strip_whitespace=True, min_length=2, max_length=256
+    )
     state: DeviceStateEnum = Field(default=DeviceStateEnum.NOT_SET)
     status: DeviceStatusEnum = Field(default=DeviceStatusEnum.ACTIVE)
 
@@ -64,21 +66,21 @@ class ScoringConfig(FrozenBaseConfig):
 class ChallengeConfig(FrozenBaseConfig):
     api_key: SecretStr = Field(..., min_length=8, max_length=128)
     ts_api_token: SecretStr = Field(..., min_length=8, max_length=128)
-    ts_tailnet: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
-    smtp_host: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
-    smtp_port: int = Field(..., ge=1, le=65535)  # type: ignore
-    smtp_user: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
+    ts_tailnet: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)
+    smtp_host: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)
+    smtp_port: int = Field(..., ge=1, le=65535)
+    smtp_user: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)
     smtp_password: SecretStr = Field(..., min_length=8, max_length=128)
     email_sender: EmailStr = Field(...)
-    n_repeat: int = Field(..., ge=1)  # type: ignore
-    fp_timeout: int = Field(..., ge=1)  # type: ignore
+    n_repeat: int = Field(..., ge=1)
+    fp_timeout: int = Field(..., ge=1)
     proxy_inter_base_url: AnyHttpUrl = Field(...)
-    devices_fname: str = Field(  # type: ignore
-        ..., strip_whitespace=True, min_length=2, max_length=256
-    )
+    devices_fname: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)
     devices: list[DeviceConfig] = Field(default_factory=list)
     scoring: ScoringConfig = Field(...)
-
+    browser_names: list[str] = Field(
+        default_factory=list, strip_whitespace=True, min_length=2, max_length=64
+    )
     model_config = SettingsConfigDict(env_prefix=f"{ENV_PREFIX}CHALLENGE_")
 
 
