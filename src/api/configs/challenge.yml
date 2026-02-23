@@ -1,18 +1,12 @@
 challenge:
-  fp_js_fname: "fingerprinter.js"
-  ts_device_tag: "tag:devices"
-  ts_static_ip: "100.100.200.100"
-  change_ts_ip: false
   smtp_host: "smtp.gmail.com"
   smtp_port: 587
   smtp_user: "user@example.com"
   smtp_password: "password"
   email_sender: "noreply@example.com"
   n_repeat: 2
-  random_seed: null
   fp_timeout: 100
   proxy_inter_base_url: "http://localhost:8000"
-  proxy_exter_base_url: "http://dfp-proxy:8000"
   devices_fname: "devices.json"
   devices: []
   scoring:

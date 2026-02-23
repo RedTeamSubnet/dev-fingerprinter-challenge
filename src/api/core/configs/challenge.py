@@ -63,26 +63,16 @@ class ScoringConfig(FrozenBaseConfig):
 
 class ChallengeConfig(FrozenBaseConfig):
     api_key: SecretStr = Field(..., min_length=8, max_length=128)
-    fp_js_fname: str = Field(  # type: ignore
-        ..., strip_whitespace=True, min_length=2, max_length=256
-    )
     ts_api_token: SecretStr = Field(..., min_length=8, max_length=128)
     ts_tailnet: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
-    ts_device_tag: str = Field(  # type: ignore
-        ..., strip_whitespace=True, min_length=2, max_length=64
-    )
-    ts_static_ip: IPvAnyAddress = Field(...)
-    change_ts_ip: bool = Field(...)
     smtp_host: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
     smtp_port: int = Field(..., ge=1, le=65535)  # type: ignore
     smtp_user: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
     smtp_password: SecretStr = Field(..., min_length=8, max_length=128)
     email_sender: EmailStr = Field(...)
     n_repeat: int = Field(..., ge=1)  # type: ignore
-    random_seed: Optional[int] = Field(default=None)
     fp_timeout: int = Field(..., ge=1)  # type: ignore
     proxy_inter_base_url: AnyHttpUrl = Field(...)
-    proxy_exter_base_url: AnyHttpUrl = Field(...)
     devices_fname: str = Field(  # type: ignore
         ..., strip_whitespace=True, min_length=2, max_length=256
     )
