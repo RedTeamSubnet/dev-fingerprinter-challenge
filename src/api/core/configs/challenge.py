@@ -65,8 +65,6 @@ class ScoringConfig(FrozenBaseConfig):
 
 class ChallengeConfig(FrozenBaseConfig):
     api_key: SecretStr = Field(..., min_length=8, max_length=128)
-    ts_api_token: SecretStr = Field(..., min_length=8, max_length=128)
-    ts_tailnet: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)
     smtp_host: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)
     smtp_port: int = Field(..., ge=1, le=65535)
     smtp_user: str = Field(..., strip_whitespace=True, min_length=2, max_length=256)
