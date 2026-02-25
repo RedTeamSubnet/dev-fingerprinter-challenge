@@ -28,11 +28,10 @@ dynamic = ["version", "dependencies", "optional-dependencies"]
 
 
 [project.urls]
-Homepage = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge"
-Repository = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge"
+Homepage = "https://github.com/RedTeamSubnet/dev_fingerprinter"
+Repository = "https://github.com/RedTeamSubnet/dev_fingerprinter"
 Documentation = "https://docs.theredteam.io"
-Issues = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge/issues"
-
+Issues = "https://github.com/RedTeamSubnet/dev_fingerprinter/issues"
 
 [tool.setuptools]
 include-package-data = true
