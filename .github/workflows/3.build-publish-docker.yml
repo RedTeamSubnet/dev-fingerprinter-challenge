@@ -27,7 +27,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: main
-          
+
       - name: Get latest version
         id: version
         run: |
@@ -37,21 +37,21 @@ jobs:
           echo "VERSION=${VERSION}" >> ${GITHUB_ENV}
           echo "version=${VERSION}" >> ${GITHUB_OUTPUT}
           echo "🐳 Building Docker version: v${VERSION}"
-          
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
         with:
           image: tonistiigi/binfmt:qemu-v7.0.0-28
-          
+
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-        
+
       - name: Login to Docker Hub
         uses: docker/login-action@v3
         with:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
-          
+
       - name: Build and test
         uses: docker/build-push-action@v6
         with:
@@ -59,9 +59,9 @@ jobs:
           build-args: |
             HASH_PASSWORD=${{ secrets.DOCKER_UID_HASH_PASSWORD }}
           load: true
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/ada_detection:cache-latest
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/ada_detection:test
-          
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/dev_fingerprinter:cache-latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/dev_fingerprinter:test
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -69,13 +69,13 @@ jobs:
           build-args: |
             HASH_PASSWORD=${{ secrets.DOCKER_UID_HASH_PASSWORD }}
           platforms: linux/amd64
-          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/ada_detection:cache-latest
-          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/ada_detection:cache-latest,mode=max
+          cache-from: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/dev_fingerprinter:cache-latest
+          cache-to: type=registry,ref=${{ secrets.DOCKERHUB_USERNAME }}/dev_fingerprinter:cache-latest,mode=max
           tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/ada_detection:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/ada_detection:v${{ env.VERSION }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/dev_fingerprinter:latest
+            ${{ secrets.DOCKERHUB_USERNAME }}/dev_fingerprinter:v${{ env.VERSION }}
           push: true
-          
+
       - name: Summary
         run: |
           echo "### ✅ Docker Image Published" >> $GITHUB_STEP_SUMMARY
