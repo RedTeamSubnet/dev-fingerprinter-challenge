@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 
 [project]
-name = "dev-fingerprinter-challenge"
+name = "dev_fingerprinter"
 authors = [{ name = "RedTeam Subnet", email = "noreply@theredteam.io" }]
 description = "Bot detection challenge for Bittensor RedTeam Subnet"
 readme = "README.md"
@@ -28,20 +28,19 @@ dynamic = ["version", "dependencies", "optional-dependencies"]
 
 
 [project.urls]
-Homepage = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge"
-Repository = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge"
+Homepage = "https://github.com/RedTeamSubnet/dev_fingerprinter"
+Repository = "https://github.com/RedTeamSubnet/dev_fingerprinter"
 Documentation = "https://docs.theredteam.io"
-Issues = "https://github.com/RedTeamSubnet/dev-fingerprinter-challenge/issues"
-
+Issues = "https://github.com/RedTeamSubnet/dev_fingerprinter/issues"
 
 
 [tool.setuptools]
 include-package-data = true
-package-dir = {"" = "src"}
+package-dir = { "" = "src" }
 
 [tool.setuptools.packages.find]
 where = ["src"]
 
 [tool.setuptools.dynamic]
-version = { file = "dev-fingerprinter-challenge.__version__.py" }
+version = { file = "dev_fingerprinter.__version__.py" }
 dependencies = { file = ["requirements.txt"] }
