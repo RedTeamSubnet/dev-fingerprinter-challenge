@@ -8,7 +8,7 @@ from redteam_core.validator.models import MinerChallengeCommit
 
 class DFPController(Controller):
     """
-    A specialized controller for the 'dev_fingerprinter_v1' challenge.
+    A specialized controller for the 'dev_fingerprinter_v2' challenge.
     Inherits from the base Controller and modifies specific logic.
     """
 
@@ -95,3 +95,5 @@ class DFPController(Controller):
     def _exclude_output_keys(self, miner_output: dict, reference_output: dict):
         miner_output["fingerprinter_js"] = None
         reference_output["fingerprinter_js"] = None
+        miner_output["scoring_results"] = None
+        reference_output["scoring_results"] = None

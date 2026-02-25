@@ -16,6 +16,7 @@ from . import service
 
 router = APIRouter(tags=["Challenge"])
 
+
 @router.get(
     "/task",
     summary="Get task",
@@ -81,17 +82,17 @@ def post_score(request: Request, miner_input: MinerInput, miner_output: MinerOut
     "/results",
     summary="Get results",
     description="This endpoint returns the results (payloads) of the last run.",
-    response_model=List[Payload],
+    response_class=JSONResponse,
     dependencies=[Depends(auth_api_key)],
 )
 def get_results(request: Request):
     _request_id = request.state.request_id
     logger.info(f"[{_request_id}] - Getting results...")
-    
+
     try:
         results = service.get_results()
         logger.success(f"[{_request_id}] - Successfully got {len(results)} results.")
-        return results
+        return JSONResponse(content=results)
     except Exception:
         logger.exception(f"[{_request_id}] - Failed to get results!")
         raise BaseHTTPException(
@@ -113,7 +114,7 @@ def post_fingerprint(
     order_id: int = Body(..., ge=0, lt=1000000, examples=[0]),
     fingerprint: str = Body(
         ..., min_length=2, max_length=128, pattern=ALPHANUM_HYPHEN_REGEX
-    )
+    ),
 ):
     _request_id = request.state.request_id
     logger.info(
