@@ -104,7 +104,7 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
     return score_result
 
 
-def get_results() -> List[Payload]:
+def get_results() -> List[dict]:
     """Returns the results from the current session."""
     return dfp_manager.get_all_payloads()
 

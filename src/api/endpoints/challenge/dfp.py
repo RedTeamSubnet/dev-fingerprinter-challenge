@@ -263,9 +263,9 @@ class DFPManager:
 
         return round(min(1.0, max(0.0, final_score)), 3)
 
-    def get_all_payloads(self) -> List[Payload]:
+    def get_all_payloads(self) -> List[dict]:
         """Return all collected payloads."""
-        return list(self.payloads.values())
+        return list([p.model_dump_json() for p in self.payloads.values()])
 
     def wait_for_batch_completion(
         self, browser: str, batch_order_ids: list, fp_timeout: int

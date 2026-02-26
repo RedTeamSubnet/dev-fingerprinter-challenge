@@ -42,4 +42,3 @@ dev_fingerprinter = "."
 
 [tool.setuptools.dynamic]
 version = { attr = "dev_fingerprinter.__version__" }
-dependencies = { file = ["requirements.txt"] }
