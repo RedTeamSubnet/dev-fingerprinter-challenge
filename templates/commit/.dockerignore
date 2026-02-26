@@ -1,6 +1,6 @@
 # File created using '.gitignore Generator' for Visual Studio Code: https://bit.ly/vscode-gig
-# Created by https://www.toptal.com/developers/gitignore/api/visualstudiocode,macos,jetbrains+all,jupyternotebooks,linux,obsidian,powershell,python,ssh,sublimetext,vim,windows,xcode,zsh
-# Edit at https://www.toptal.com/developers/gitignore?templates=visualstudiocode,macos,jetbrains+all,jupyternotebooks,linux,obsidian,powershell,python,ssh,sublimetext,vim,windows,xcode,zsh
+# Created by https://www.toptal.com/developers/gitignore/api/zsh,xcode,windows,visualstudiocode,vim,sublimetext,python,macos,linux,jetbrains+all
+# Edit at https://www.toptal.com/developers/gitignore?templates=zsh,xcode,windows,visualstudiocode,vim,sublimetext,python,macos,linux,jetbrains+all
 
 ### JetBrains+all ###
 # Covers JetBrains IDEs: IntelliJ, RubyMine, PhpStorm, AppCode, PyCharm, CLion, Android Studio, WebStorm and Rider
@@ -90,20 +90,6 @@ fabric.properties
 !.idea/codeStyles
 !.idea/runConfigurations
 
-### JupyterNotebooks ###
-# gitignore template for Jupyter Notebooks
-# website: http://jupyter.org/
-
-.ipynb_checkpoints
-*/.ipynb_checkpoints/*
-
-# IPython
-profile_default/
-ipython_config.py
-
-# Remove previous ipynb_checkpoints
-#   git rm -r .ipynb_checkpoints/
-
 ### Linux ###
 *~
 
@@ -151,17 +137,6 @@ Temporary Items
 ### macOS Patch ###
 # iCloud generated files
 *.icloud
-
-### Obsidian ###
-# config dir
-.obsidian/
-
-### PowerShell ###
-# Exclude packaged modules
-*.zip
-
-# Exclude .NET assemblies from source
-*.dll
 
 ### Python ###
 # Byte-compiled / optimized / DLL files
@@ -242,8 +217,11 @@ docs/_build/
 target/
 
 # Jupyter Notebook
+.ipynb_checkpoints
 
 # IPython
+profile_default/
+ipython_config.py
 
 # pyenv
 #   For a library or package, you might want to ignore these files since the code is
@@ -331,11 +309,6 @@ poetry.toml
 
 # LSP config files
 pyrightconfig.json
-
-### SSH ###
-**/.ssh/id_*
-**/.ssh/*_id_*
-**/.ssh/known_hosts
 
 ### SublimeText ###
 # Cache files for Sublime Text
@@ -487,41 +460,40 @@ zsdoc/data
 /tests/_output/*
 !/tests/_output/.gitkeep
 
-# End of https://www.toptal.com/developers/gitignore/api/visualstudiocode,macos,jetbrains+all,jupyternotebooks,linux,obsidian,powershell,python,ssh,sublimetext,vim,windows,xcode,zsh
+# End of https://www.toptal.com/developers/gitignore/api/zsh,xcode,windows,visualstudiocode,vim,sublimetext,python,macos,linux,jetbrains+all
 
 # Custom rules (everything added below won't be overriden by 'Generate .gitignore File' if you use 'Update' option)
 
 
 # Directories:
-log/
-logs/
-backup/
-backups/
-tmp/
-data/
-dataset/
-datasets/
-.benchmarks/
-/compose.monitoring.yml
-# Files:
-log
-logs
-backup
-backups
-tmp
-data
-dataset
-datasets
-.benchmarks
-env
-*.bak
-pm2-process.json
-compose.override.yml
-compose.override.yaml
-sample.py
-example.py
-test.py
-devices.json
+.git
+.github
 
-volumes/.vscode-server/
-volumes/storage/
+# Files:
+.gitignore
+.gitkeep
+.gitmodules
+
+**/*.git
+**/*.gitignore
+**/*.gitkeep
+**/*.gitmodules
+**/*.github
+**/*__pycache__
+**/*.pytest_cache
+**/*.benchmarks
+**/*.coverage
+**/*.DS_Store
+**/*.Thumbs.db
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/*.env
+**/*.venv
+**/*.lock
+**/*.bak
+**/*.log
+**/logs
+**/tmp
+**/data
+**/modules

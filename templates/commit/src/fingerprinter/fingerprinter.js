@@ -1,4 +1,3 @@
-// Collect fingerprint details
 function collectFingerprint() {
 	return {
 		userAgent: navigator.userAgent,

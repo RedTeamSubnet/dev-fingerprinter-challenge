@@ -1,17 +1,61 @@
-# -*- coding: utf-8 -*-
 import random
-import time
 from typing import Optional, List, Dict
 from collections import defaultdict
 
-import requests
-from pydantic import validate_call, AnyHttpUrl, SecretStr
+from pydantic import (
+    BaseModel,
+    Field,
+    IPvAnyAddress,
+    validate_call,
+    EmailStr,
+)
+from enum import Enum
+import logging
 
-from api.config import config
-from api.core.configs.challenge import DevicePM, DeviceStateEnum, DeviceStatusEnum
-from api.logger import logger
 
-from .schemas import Payload
+class DeviceStatusEnum(str, Enum):
+    ACTIVE = "ACTIVE"
+    INACTIVE = "INACTIVE"
+
+
+class DeviceStateEnum(str, Enum):
+    NOT_SET = "NOT_SET"
+    READY = "READY"
+    RUNNING = "RUNNING"
+    TIMEOUT = "TIMEOUT"
+    FAILED = "FAILED"
+    COMPLETED = "COMPLETED"
+    ERROR = "ERROR"
+
+
+class DevicePM(BaseModel):
+    id: int = Field(..., gt=0)
+    ts_node_id: str = Field(
+        ..., strip_whitespace=True, min_length=2, max_length=64
+    )  # type
+    ts_name: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
+    ts_ip: IPvAnyAddress = Field(...)
+    device_model: Optional[str] = Field(default=None, strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
+    email: EmailStr = Field(...)
+    browser: str = Field(..., strip_whitespace=True, min_length=2, max_length=64)  # type: ignore
+    fingerprint: Optional[str] = Field(default=None, strip_whitespace=True, min_length=2, max_length=256)  # type: ignore
+    state: DeviceStateEnum = Field(default=DeviceStateEnum.NOT_SET)
+    status: DeviceStatusEnum = Field(default=DeviceStatusEnum.ACTIVE)
+
+
+class Payload(BaseModel):
+    order_id: int = Field(..., description="The dynamic order ID of the device request")
+    device_id: int = Field(..., description="The static ID of the device")
+    device_name: str = Field(..., description="The model name of the device")
+    fingerprint: Optional[str] = Field(
+        default=None, description="The collected fingerprint"
+    )
+    browser: Optional[str] = Field(
+        default=None, description="Browser used in the session"
+    )
+
+
+logger = logging.getLogger(__name__)
 
 
 class DFPManager:
@@ -32,8 +76,8 @@ class DFPManager:
         self.session_map: Dict[int, int] = {}
         self.score_value: float = 0.0
         self.start_id: int = 0
-        self.current_browser: Optional[str] = None
         self.request_id: Optional[str] = None
+
         self.session_structure: Dict[str, List[dict]] = {}
 
     @validate_call
@@ -50,7 +94,7 @@ class DFPManager:
             order_id=order_id,
             device_id=device_cfg.id,
             device_name=device_cfg.device_model or "Unknown",
-            browser=browser,
+            browser=target.browser,
         )
 
     def update_fingerprint(self, order_id: int, fingerprint: str) -> bool:
@@ -69,10 +113,12 @@ class DFPManager:
 
         payload = self.payloads[order_id]
         payload.fingerprint = fingerprint.strip()
-        logger.success(
-            f"Received fingerprint for device: {target.device_model} (order_id: {order_id})"
-        )
+
         target.state = DeviceStateEnum.COMPLETED
+        logger.info(
+            f"Received fingerprint for device {target.ts_name} (order_id: {order_id}, browser: {target.browser}): {payload.fingerprint}"
+        )
+
         return True
 
     def get_pending_devices(self) -> List[DevicePM]:
@@ -145,43 +191,18 @@ class DFPManager:
         self.session_structure = structure
         return structure
 
-    @validate_call
-    def send_fp_js(
-        self, request_id: str, base_url: AnyHttpUrl, api_key: SecretStr
-    ) -> None:
-        """Send fingerprinter.js to the proxy server."""
-        _endpoint = "/_fp-js"
-        _base_url = str(base_url).rstrip("/")
-        _url = f"{_base_url}{_endpoint}?order_id=0"
-
-        logger.info(
-            f"[{request_id}] - Sending fingerprinter.js file to '{_url}' DFP proxy server ..."
-        )
-        try:
-            _headers = {
-                "Content-Type": "application/json",
-                "Accept": "application/json",
-                "X-API-Key": api_key.get_secret_value(),
-            }
-            _payload = {"fingerprinter_js": self.fp_js}
-            _response = requests.post(_url, headers=_headers, json=_payload)
-            _response.raise_for_status()
-
-            logger.info(
-                f"[{request_id}] - Successfully sent fingerprinter.js file to '{_url}' DFP proxy server."
-            )
-        except Exception:
-            logger.error(
-                f"[{request_id}] - Failed to send fingerprinter.js file to '{_url}' DFP proxy server!"
-            )
-            raise
-
     def calculate_score(self) -> float:
         """
         Calculates final score by aggregating all batches
         into physical device identities and applying the 'Two-Strike' collision rule.
         """
-        scoring_cfg = config.challenge.scoring
+        scoring_cfg = {
+            "min_devices": 2,
+            "fragmentation_penalty": 0.3,
+            "collision_penalty": 0.25,
+            "max_fragmentation": 3,
+            "max_collision": 3,
+        }
 
         # Result: { physical_id: [Payload1, Payload2, ...] }
         payloads_by_device = defaultdict(list)
@@ -191,9 +212,9 @@ class DFPManager:
 
         # Must have at least 2 unique physical phones reporting
         active_device_ids = list(payloads_by_device.keys())
-        if len(active_device_ids) < scoring_cfg.min_devices:
+        if len(active_device_ids) < scoring_cfg["min_devices"]:
             logger.warning(
-                f"Scoring: Only {len(active_device_ids)} physical devices reported. Min {scoring_cfg.min_devices} required."
+                f"Scoring: Only {len(active_device_ids)} physical devices reported. Min {scoring_cfg['min_devices']} required."
             )
             return 0.0
 
@@ -220,13 +241,13 @@ class DFPManager:
             unique_fps_count = len(unique_fps)
 
             # Rule 1 Fragmentation (Internal Consistency)
-            if unique_fps_count >= scoring_cfg.max_fragmentation:
+            if unique_fps_count >= scoring_cfg["max_fragmentation"]:
                 logger.warning(
                     f"Scoring: Device {device_id} reached fragmentation limit ({unique_fps_count} unique IDs)."
                 )
                 device_points = 0.0
             elif unique_fps_count > 1:
-                penalty = scoring_cfg.fragmentation_penalty * (unique_fps_count - 1)
+                penalty = scoring_cfg["fragmentation_penalty"] * (unique_fps_count - 1)
                 device_points -= penalty
                 logger.info(
                     f"Scoring: Device {device_id} fragmented. Penalty: -{penalty:.2f}"
@@ -248,9 +269,9 @@ class DFPManager:
                     )
                     device_points = 0.0
                 elif collision_batches_count == 1:
-                    device_points -= scoring_cfg.collision_penalty
+                    device_points -= scoring_cfg["collision_penalty"]
                     logger.info(
-                        f"Scoring: Device {device_id} collided in 1 batch. Penalty: -{scoring_cfg.collision_penalty:.2f}"
+                        f"Scoring: Device {device_id} collided in 1 batch. Penalty: -{scoring_cfg['collision_penalty']:.2f}"
                     )
 
             total_session_points += max(0.0, device_points)
@@ -263,29 +284,9 @@ class DFPManager:
 
         return round(min(1.0, max(0.0, final_score)), 3)
 
-    def get_all_payloads(self) -> List[dict]:
+    def get_all_payloads(self) -> List[Payload]:
         """Return all collected payloads."""
-        return list([p.model_dump_json() for p in self.payloads.values()])
-
-    def wait_for_batch_completion(
-        self, browser: str, batch_order_ids: list, fp_timeout: int
-    ):
-        elapsed = 0
-        logger.info(
-            f"Waiting for batch {browser} to complete with timeout of {fp_timeout} seconds..."
-        )
-        while True:
-            pending = self.get_pending_devices()
-            if not pending:
-                logger.info(f"Batch {browser} completed.")
-                break
-            if elapsed >= fp_timeout:
-                logger.warning(f"Batch {browser} timed out.")
-                for order_id in batch_order_ids:
-                    self.set_device_timeout(order_id)
-                break
-            elapsed += 1
-            time.sleep(1)
+        return list(self.payloads.values())
 
     ### ATTRIBUTES ###
     @property
@@ -309,10 +310,3 @@ class DFPManager:
         self.__fp_js = fp_js
 
     ### ATTRIBUTES ###
-
-
-# Global state management - similar to PayloadManager pattern
-dfp_manager = DFPManager()
-
-
-__all__ = ["DFPManager", "dfp_manager"]

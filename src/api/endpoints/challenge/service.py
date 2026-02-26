@@ -1,25 +1,24 @@
 # -*- coding: utf-8 -*-
 
-import time
+from typing import List
 
 from pydantic import validate_call
-from api.core.configs.challenge import DeviceStateEnum
-from api.core.services import utils as utils_services
+
 from api.config import config
-from api.helpers.tailscale import Tailscale
-from api.helpers.pushcut import Pushcut
+from api.helpers.email import EmailHelper
 from api.logger import logger
 
-from .schemas import MinerInput, MinerOutput
-from .dfp import DFPManager
+from .schemas import MinerInput, MinerOutput, Payload
+from .dfp import dfp_manager
+from .utils import sync_device_with_proxy
 
-
-tailscale = Tailscale(
-    api_token=config.challenge.ts_api_token, tailnet=config.challenge.ts_tailnet
+email_helper = EmailHelper(
+    smtp_host=config.challenge.smtp_host,
+    smtp_port=config.challenge.smtp_port,
+    smtp_user=config.challenge.smtp_user,
+    smtp_password=config.challenge.smtp_password,
+    email_sender=config.challenge.email_sender,
 )
-pushcut = Pushcut(api_key=config.challenge.pushcut_api_key)
-
-dfp_manager: DFPManager
 
 
 def get_task() -> MinerInput:
@@ -29,115 +28,101 @@ def get_task() -> MinerInput:
 
 @validate_call
 def score(request_id: str, miner_output: MinerOutput) -> float:
+    """Score a miner's fingerprinter.js submission."""
 
-    global dfp_manager
-    _score = 0.0
+    _n_repeat = config.challenge.n_repeat
 
-    # Removed ESLint check here
-    dfp_manager = DFPManager(fp_js=miner_output.fingerprinter_js)
-    dfp_manager.send_fp_js(
-        request_id=request_id,
-        base_url=config.challenge.proxy_inter_base_url,
-        api_key=config.challenge.api_key,
+    # Get active devices for counting
+    active_devices = [d for d in config.challenge.devices if d.status.value == "ACTIVE"]
+    _total_active = len(active_devices)
+
+    if _total_active == 0:
+        logger.error(f"[{request_id}] - No active devices found!")
+        return 0.0
+
+    # Restart manager for new session
+    dfp_manager.restart_manager(fp_js=miner_output.fingerprinter_js)
+    dfp_manager.request_id = request_id
+
+    dfp_manager.start_id = 0
+
+    # Send fingerprinter.js to proxy
+    try:
+        dfp_manager.send_fp_js(
+            request_id=request_id,
+            base_url=config.challenge.proxy_inter_base_url,
+            api_key=config.challenge.api_key,
+        )
+    except Exception as e:
+        logger.warning(
+            f"[{request_id}] - Failed to send fingerprinter.js to proxy: {e}"
+        )
+        raise
+
+    # Generate session structure
+    logger.info(
+        f"[{request_id}] - Generating session structure with {_n_repeat} batches..."
     )
-    utils_services.check_health(request_id=request_id)
-    dfp_manager.generate_targets(
+    session_structure = dfp_manager.gen_session_structure(
         devices=config.challenge.devices,
-        n_repeat=config.challenge.n_repeat,
-        random_seed=config.challenge.random_seed,
+        browsers=config.challenge.browser_names,
+        n_repeat=_n_repeat,
     )
 
-    for _i, _target_device in enumerate(dfp_manager.target_devices):
-        if config.challenge.change_ts_ip:
-            tailscale.change_device_ip(
-                device_id=_target_device.ts_node_id, ip=config.challenge.ts_static_ip
-            )
-            time.sleep(1)
+    logger.info(
+        f"[{request_id}] - Starting {_n_repeat} batches of {_total_active} devices..."
+    )
 
-        _web_endpoint = "/_web"
-        _web_base_url = str(config.challenge.proxy_exter_base_url).rstrip("/")
-        _web_url = f"{_web_base_url}{_web_endpoint}?order_id={_i}"
-        logger.info(
-            f"[{request_id}] - Executing input '{_web_url}' URL for device with {{'order_id': {_i}, 'id': {_target_device.id}}} ..."
-        )
-        _target_device.state = DeviceStateEnum.RUNNING
-        success = pushcut.execute(
-            shortcut=config.challenge.pushcut_shortcut,
-            input_url=_web_url,
-            timeout=config.challenge.pushcut_timeout,
-            server_id=_target_device.pushcut_server_id,
-            api_key=_target_device.pushcut_api_key,
-            raise_on_error=False,  # Don't raise exception, just return False
-        )
+    proxy_base_url = str(config.challenge.proxy_inter_base_url).rstrip("/")
 
-        if not success:
-            _target_device.state = DeviceStateEnum.ERROR
-            logger.error(
-                f"[{request_id}] - Could not execute pushcut for device with {{'order_id': {_i}, 'id': {_target_device.id}}} (server unavailable or request failed)"
-            )
-            logger.debug(
-                f"[{request_id}] - Device {{'order_id': {_i}, 'id': {_target_device.id}}} marked as ERROR and will be excluded from scoring. No request sent to external proxy."
-            )
-            continue
+    for browser, browser_devices in session_structure.items():
 
         logger.info(
-            f"[{request_id}] - Successfully executed input '{_web_url}' URL for device with {{'order_id': {_i}, 'id': {_target_device.id}}}."
+            f"[{request_id}] - Processing Batch {browser} {len(session_structure)} with browser: {browser}"
         )
 
-        _t = 0
-        while True:
-            if _target_device.state == DeviceStateEnum.COMPLETED:
-                logger.success(
-                    f"[{request_id}] - Successfully completed fingerprinting for device with {{'order_id': {_i}, 'id': {_target_device.id}, 'fingerprint': '{_target_device.fingerprint}'}}."
-                )
-                break
+        batch_order_ids = []
+        dfp_manager.current_browser = browser
+        sync_device_with_proxy(request_id, proxy_base_url, browser_devices)
 
-            if config.challenge.fp_timeout <= _t:
-                logger.warning(
-                    f"[{request_id}] - Device with {{'order_id': {_i}, 'id': {_target_device.id}}} could not completed fingerprinting within {config.challenge.fp_timeout} seconds!"
-                )
-                _target_device.state = DeviceStateEnum.TIMEOUT
-                break
+        subject = f"Running browser: {browser}"
+        logger.info(f"[{request_id}] - Sending email: '{subject}'")
+        email_helper.send(to=config.challenge.email_sender, subject=subject, body=" ")
 
-            _t = _t + 1
-            time.sleep(1)
+        for _device in browser_devices:
+            dfp_manager.set_device_running(_device["order_id"])
+            batch_order_ids.append(_device["order_id"])
 
-        if config.challenge.change_ts_ip:
-            tailscale.change_device_ip(
-                device_id=_target_device.ts_node_id, ip=_target_device.ts_ip
-            )
+        dfp_manager.wait_for_batch_completion(
+            browser=browser,
+            batch_order_ids=batch_order_ids,
+            fp_timeout=config.challenge.fp_timeout,
+        )
 
-    _score = dfp_manager.score()
-    return _score
+    score_result = dfp_manager.calculate_score()
+
+    return score_result
+
+
+def get_results() -> List[dict]:
+    """Returns the results from the current session."""
+    return dfp_manager.get_all_payloads()
 
 
 @validate_call
-def set_fingerprint(order_id: int, fingerprint: str) -> None:
+def set_fingerprint(order_id: int, fingerprint: str) -> bool:
+    """Receive fingerprint from proxy."""
+    success = dfp_manager.update_fingerprint(order_id=order_id, fingerprint=fingerprint)
 
-    global dfp_manager
+    if not success:
+        logger.warning(f"Failed to set fingerprint for order_id {order_id}")
 
-    if not dfp_manager:
-        raise RuntimeError(
-            "'dfp_manager' is not initialized, please run '/score' endpoint first!"
-        )
-
-    if len(dfp_manager.target_devices) <= order_id:
-        raise IndexError(f"Order ID {order_id} is out of range!")
-
-    _target_device = dfp_manager.target_devices[order_id]
-    if _target_device.state == DeviceStateEnum.COMPLETED:
-        raise ValueError(
-            f"Device with {{'id': {_target_device.id}, 'order_id': {order_id}}} already completed fingerprinting!"
-        )
-
-    _target_device.fingerprint = fingerprint.strip()
-    _target_device.state = DeviceStateEnum.COMPLETED
-
-    return
+    return success
 
 
 __all__ = [
     "get_task",
     "score",
     "set_fingerprint",
+    "get_results",
 ]

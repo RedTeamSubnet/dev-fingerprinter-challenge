@@ -1,26 +1,18 @@
 challenge:
-  fp_js_fname: "fingerprinter.js"
-  ts_device_tag: "tag:devices"
-  ts_static_ip: "100.100.200.100"
-  change_ts_ip: false
-  pushcut_shortcut: "rt-dfp"
-  pushcut_timeout: 15
-  n_repeat: 3
-  random_seed: null
-  fp_timeout: 60
+  smtp_host: "smtp.gmail.com"
+  smtp_port: 587
+  smtp_user: "user@example.com"
+  smtp_password: "password"
+  email_sender: "noreply@example.com"
+  n_repeat: 2
+  fp_timeout: 100
   proxy_inter_base_url: "http://localhost:8000"
-  proxy_exter_base_url: "http://dfp-proxy:8000"
   devices_fname: "devices.json"
   devices: []
+  browser_names:  ["chrome", "brave", "firefox-focus", "duckduckgo", "safari"]
   scoring:
-    weights:
-      fragmentation: 0.3
-      soft_collision: 0.15
-      hard_collision: 0.55
-    thresholds:
-      fragmentation:
-        inconsistency_pct: 0.25
-        frag_pct: 0.2
-      collision:
-        soft_pct: 0.35
-        hard_pct: 0.15
+    min_devices: 4
+    fragmentation_penalty: 0.3
+    collision_penalty: 0.25
+    max_fragmentation: 3
+    max_collision: 3

@@ -7,10 +7,10 @@ _SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" >/dev/null 2>&1 && pwd)"
 _PROJECT_DIR="$(cd "${_SCRIPT_DIR}/.." >/dev/null 2>&1 && pwd)"
 cd "${_PROJECT_DIR}" || exit 2
 
-echo "INFO: Copying compose override file..."
-cp ./templates/compose/compose.override.dev.yml ./compose.override.yml || exit 2
+# Build and start services in detached mode
+if ! docker compose up -d; then
+	echo "Error: Failed to start Docker Compose services" >&2
+	exit 1
+fi
 
-echo "INFO: Starting challenge server..."
-./compose.sh start -l || exit 2
-
-echo "OK: Setup complete!"
+echo "Services started successfully"

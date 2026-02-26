@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 
+from typing import Optional, List
 from fastapi import APIRouter, Request, HTTPException, Body, Depends
 from fastapi.responses import JSONResponse
 
@@ -10,9 +11,8 @@ from api.core.exceptions import BaseHTTPException
 from api.core.dependencies.auth import auth_api_key
 from api.logger import logger
 
-from .schemas import MinerInput, MinerOutput
+from .schemas import MinerInput, MinerOutput, Payload
 from . import service
-
 
 router = APIRouter(tags=["Challenge"])
 
@@ -76,6 +76,29 @@ def post_score(request: Request, miner_input: MinerInput, miner_output: MinerOut
         )
 
     return _score
+
+
+@router.get(
+    "/results",
+    summary="Get results",
+    description="This endpoint returns the results (payloads) of the last run.",
+    response_class=JSONResponse,
+    dependencies=[Depends(auth_api_key)],
+)
+def get_results(request: Request):
+    _request_id = request.state.request_id
+    logger.info(f"[{_request_id}] - Getting results...")
+
+    try:
+        results = service.get_results()
+        logger.success(f"[{_request_id}] - Successfully got {len(results)} results.")
+        return JSONResponse(content=results)
+    except Exception:
+        logger.exception(f"[{_request_id}] - Failed to get results!")
+        raise BaseHTTPException(
+            error_enum=ErrorCodeEnum.INTERNAL_SERVER_ERROR,
+            message="Failed to get results!",
+        )
 
 
 @router.post(
