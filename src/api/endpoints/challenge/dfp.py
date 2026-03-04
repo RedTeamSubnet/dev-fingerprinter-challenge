@@ -35,6 +35,7 @@ class DFPManager:
         self.current_browser: Optional[str] = None
         self.request_id: Optional[str] = None
         self.session_structure: Dict[str, List[dict]] = {}
+        self.failed_device_count: int = 0
 
     @validate_call
     def add_device(self, order_id: int, device_cfg: DevicePM, browser: str) -> None:
@@ -92,6 +93,7 @@ class DFPManager:
             idx = self.session_map[order_id]
             if self.target_devices[idx].state == DeviceStateEnum.RUNNING:
                 self.target_devices[idx].state = DeviceStateEnum.TIMEOUT
+                self.failed_device_count += 1
 
     def gen_session_structure(
         self,
@@ -194,6 +196,11 @@ class DFPManager:
         if len(active_device_ids) < scoring_cfg.min_devices:
             logger.warning(
                 f"Scoring: Only {len(active_device_ids)} physical devices reported. Min {scoring_cfg.min_devices} required."
+            )
+            return 0.0
+        elif self.failed_device_count > 10:
+            logger.warning(
+                f"Scoring: Too many failed devices ({self.failed_device_count}). Score: 0.0"
             )
             return 0.0
 

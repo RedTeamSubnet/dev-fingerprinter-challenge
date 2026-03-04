@@ -98,6 +98,11 @@ def score(request_id: str, miner_output: MinerOutput) -> float:
             batch_order_ids=batch_order_ids,
             fp_timeout=config.challenge.fp_timeout,
         )
+        if dfp_manager.failed_device_count > 10:
+            logger.warning(
+                f"[{request_id}] - Too many failed devices:({dfp_manager.failed_device_count}). Score: 0.0"
+            )
+            return 0.0
 
     score_result = dfp_manager.calculate_score()
 
