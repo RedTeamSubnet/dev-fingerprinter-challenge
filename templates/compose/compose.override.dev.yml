@@ -22,3 +22,20 @@ services:
     #   interval: 5m
     #   timeout: 5s
     #   retries: 3
+  miner-commit-api:
+    image: myhub/rest-myc-commit:latest
+    build:
+      context: ./examples/miner_commit
+    restart: unless-stopped
+    environment:
+      TERM: ${TERM:-xterm}
+      TZ: ${TZ:-UTC}
+    env_file:
+      - path: .env
+        required: false
+    volumes:
+      - "./examples/miner_commit/src:/app"
+    ports:
+      - ${MYC_MINER_COMMIT_API_PORT:-10002}:${MYC_MINER_COMMIT_API_PORT:-10002}
+    command: ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "${MYC_MINER_COMMIT_API_PORT:-10002}", "--reload"]
+    tty: true
