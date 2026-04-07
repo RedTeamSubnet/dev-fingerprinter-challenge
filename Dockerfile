@@ -107,6 +107,7 @@ RUN rm -rfv /var/lib/apt/lists/* /var/cache/apt/archives/* /tmp/* /root/.cache/*
 		net-tools \
 		curl \
 		iproute2 \
+		util-linux \
 		nano && \
 	curl -fsSL https://get.docker.com/ | sh -s -- --version ${DOCKER_VERSION} && \
 	curl -fsSL https://deb.nodesource.com/setup_24.x | bash - && \
