@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from typing import Optional, List
 from fastapi import APIRouter, Request, HTTPException, Body, Depends
 from fastapi.responses import JSONResponse
 
@@ -11,9 +10,8 @@ from api.core.exceptions import BaseHTTPException
 from api.core.dependencies.auth import auth_api_key
 from api.logger import logger
 
-from .schemas import MinerInput, MinerOutput, Payload
+from .schemas import MinerInput, MinerOutput, ScoringTelemetryResponse
 from . import service
-
 router = APIRouter(tags=["Challenge"])
 
 
@@ -46,6 +44,20 @@ def get_task(request: Request):
         )
 
     return _miner_input
+
+@router.get(
+    "/telemetry",
+    summary="Get telemetry",
+    description="This endpoint returns the scoring telemetry from the latest run.",
+    response_class=JSONResponse,
+    response_model=ScoringTelemetryResponse,
+)
+def get_telemetry(request: Request):
+    _request_id = request.state.request_id
+    logger.info(f"[{_request_id}] - Getting telemetry...")
+
+    telemetry = service.get_telemetry()
+    return telemetry
 
 
 @router.post(
