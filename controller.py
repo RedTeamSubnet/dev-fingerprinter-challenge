@@ -70,8 +70,10 @@ class DFPController(Controller):
                 else 0.0
             )
             scoring_results = self._get_scoring_results()
+            telemetry = self._get_telemetry_from_challenge()
 
             _scoring_log.miner_output["scoring_results"] = scoring_results
+            _scoring_log.miner_output["telemetry"] = telemetry
             _scoring_log.score = score
 
     def _get_scoring_results(self) -> dict:
@@ -92,8 +94,28 @@ class DFPController(Controller):
 
         return scoring_results
 
+    def _get_telemetry_from_challenge(self) -> dict:
+        """Retrieve telemetry from the challenge container."""
+
+        _protocol, _ssl_verify = self._check_protocol(is_challenger=True)
+        try:
+            bt.logging.debug(f"[CONTROLLER] Getting telemetry ...")
+            response = requests.get(
+                f"{_protocol}://localhost:{constants.CHALLENGE_DOCKER_PORT}/telemetry",
+                verify=_ssl_verify,
+                headers=self.challenge_info.get("scoring_headers", {}),
+            )
+            telemetry = response.json()
+        except Exception as ex:
+            bt.logging.error(f"Score challenge failed: {str(ex)}")
+            telemetry = {}
+
+        return telemetry
+
     def _exclude_output_keys(self, miner_output: dict, reference_output: dict):
         miner_output["fingerprinter_js"] = None
         reference_output["fingerprinter_js"] = None
         miner_output["scoring_results"] = None
         reference_output["scoring_results"] = None
+        miner_output["telemetry"] = None
+        reference_output["telemetry"] = None
