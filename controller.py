@@ -18,6 +18,7 @@ class DFPController(Controller):
         challenge_info: dict,
         miner_commits: list[MinerChallengeCommit],
         reference_comparison_commits: list[MinerChallengeCommit],
+        miners_docker_info: dict[str, dict],
         seed_inputs: list[dict] = [],
     ):
         """
@@ -28,6 +29,7 @@ class DFPController(Controller):
             challenge_info,
             miner_commits,
             reference_comparison_commits,
+            miners_docker_info,
             seed_inputs,
         )
 
